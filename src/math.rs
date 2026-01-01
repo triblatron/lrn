@@ -143,10 +143,6 @@ impl LogicalAddress {
     }
 
     pub fn parse(id:&str) -> LogicalAddress {
-        let mut link:u16 = 0;
-        let mut tile:u16 = 0;
-        let mut segment:u16 = 0;
-        let mut lane:i16 = 0;
         let mut iter = id.split('/').enumerate();
         let id = iter.next().expect("Malformed logical address id").1;
         let mask = iter.next().expect("Should have content after the '/'").1;
