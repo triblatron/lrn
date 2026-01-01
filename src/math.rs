@@ -26,17 +26,24 @@ impl Identifier {
         }
     }
 
-    pub fn parse(str:&str) -> Identifier {
+    pub fn parse(str:&str) -> Result<Identifier, &str> {
+        let mut link:u16 = 0;
+        let mut tile:u16 = 0;
+        let mut segment:u16 = 0;
+        let mut lane:i16 = 0;
         let mut state : ParsingState = ParsingState::Initial;
         let mut digits : String = String::new();
-        let mut a = [0,0,0,0];
         let mut i = 0;
+        let mut allow_negative = false;
         for c in str.chars() {
             match state {
                 ParsingState::Initial => {
-                    if c.is_digit(10) {
+                    if c.is_digit(10) || (c == '-' && allow_negative) {
                         digits.push(c);
                         state = ParsingState::FoundDigit;
+                    }
+                    else if c == '-' {
+                        return Err("Expected whole number, got minus sign");
                     }
                 },
                 ParsingState::FoundDigit => {
@@ -44,9 +51,23 @@ impl Identifier {
                         digits.push(c);
                     }
                     else if c == '.' {
-                        if i<a.len() {
-                            a[i] = digits.parse::<u16>().unwrap();
+                        if i<4 {
+                            if i==0 {
+                                link = digits.parse::<u16>().unwrap_or(0);
+                            }
+                            else if i==1 {
+                                tile = digits.parse::<u16>().unwrap_or(0);
+                            }
+                            else if i==2 {
+                                segment = digits.parse::<u16>().unwrap_or(0);
+                            }
+                            else if i==3 {
+                                lane = digits.parse::<i16>().unwrap_or(0);
+                            }
                             i+=1;
+                            if i == 3 {
+                                allow_negative = true;
+                            }
                             digits.clear();
                             state = ParsingState::Initial;
                         }
@@ -60,12 +81,15 @@ impl Identifier {
                 }
             }
         }
-        Identifier {
-            link:a[0],
-            tile:a[1],
-            segment:a[2],
-            lane:a[3] as i16,
+        if let ParsingState::FoundDigit = state && i==3 {
+            lane = digits.parse::<i16>().unwrap();
         }
+        Ok(Identifier {
+            link,
+            tile,
+            segment,
+            lane,
+        })
     }
 }
 
@@ -142,16 +166,25 @@ impl LogicalAddress {
         }
     }
 
-    pub fn parse(id:&str) -> LogicalAddress {
+    pub fn parse(id:&str) -> Result<LogicalAddress,&str> {
         let mut iter = id.split('/').enumerate();
-        let id = iter.next().expect("Malformed logical address id").1;
-        let mask = iter.next().expect("Should have content after the '/'").1;
-        let id = Identifier::parse(id);
+        let id = iter.next().unwrap_or((0,"")).1;
+        if id == "" {
+            return Err("Expected some content before the '/'");
+        }
+        let mask = iter.next().unwrap_or((0,"1.1.1.1")).1;
+        let mut id = Identifier::parse(id);
+        let id = match id {
+            Ok(ok) => {
+                ok
+            }
+            Err(msg) => return Err(msg)
+        };
         let mask = Mask::parse(mask);
-        LogicalAddress {
+        Ok(LogicalAddress {
             id,
             mask
-        }
+        })
     }
 }
 
@@ -195,7 +228,7 @@ impl LogicalCoord {
 
     pub fn empty() -> LogicalCoord {
         LogicalCoord {
-            addr:LogicalAddress::parse("0.0.0.0/0.0.0.0"),
+            addr:LogicalAddress::new(Identifier::new(0,0,0,0), Mask::new(false,false,false,false)),
             offset:0.0,
             distance:0.0,
             loft:0.0
@@ -271,7 +304,7 @@ mod tests {
 
     #[test]
     fn test_logical_coords() {
-        let sut = LogicalCoord::new(LogicalAddress::parse("1.1.1.0/1.1.1.0"), 1.0, 2.0, 3.0);
+        let sut = LogicalCoord::new(LogicalAddress::new(Identifier::new(1,1,1,0),Mask::new(true,true,true,false)), 1.0, 2.0, 3.0);
         assert_eq!(sut.offset, 1.0);
         assert_eq!(sut.distance, 2.0);
         assert_eq!(sut.loft, 3.0);
@@ -281,7 +314,7 @@ mod tests {
     #[case(-1.825, 50.0, 0.0)]
     fn test_logical_to_inertial_coords(#[case] offset: f64, #[case] distance: f64, #[case] loft: f64) {
         let sut = Curve::new();
-        let logical = LogicalCoord::new(LogicalAddress::parse("1.1.1.0/1.1.1.0"), -1.825, 50.0, 0.0);
+        let logical = LogicalCoord::new(LogicalAddress::new(Identifier::new(1,1,1,0),Mask::new(true,true,true,false)), -1.825, 50.0, 0.0);
         let mut inertial = InertialCoord::new(0.0, 0.0, 0.0);
         sut.logical_to_inertial(&logical, &mut inertial);
         assert_eq!(inertial.x, -1.825);
@@ -302,8 +335,16 @@ mod tests {
     }
 
     #[rstest]
-    #[case("1.1.1.0/1.1.1.0", LogicalAddress::new(Identifier::new(1,1,1,0),Mask::new(true,true,true,false)))]
-    fn test_parse_logical_address(#[case] str: &str, #[case] addr: LogicalAddress) {
-        assert_eq!(LogicalAddress::parse(str), addr);
+    #[case("1.1.1.0/1.1.1.0", Ok(LogicalAddress::new(Identifier::new(1,1,1,0),Mask::new(true,true,true,false))))]
+    #[case("2.10.2.1/1.1.1.1", Ok(LogicalAddress::new(Identifier::new(2,10,2,1),Mask::new(true,true,true,true))))]
+    #[case("2.10.2.-1/1.1.1.1", Ok(LogicalAddress::new(Identifier::new(2,10,2,-1),Mask::new(true,true,true,true))))]
+    #[case("-2.10.2.-1/1.1.1.1", Err("Expected whole number, got minus sign"))]
+    #[case("2.10.2.-1/2.1.1.1", Ok(LogicalAddress::new(Identifier::new(2,10,2,-1),Mask::new(true,true,true,true))))]
+    #[case("2.10.2.-1", Ok(LogicalAddress::new(Identifier::new(2,10,2,-1),Mask::new(true,true,true,true))))]
+    #[case("", Err("Expected some content before the '/'"))]
+    #[case("/", Err("Expected some content before the '/'"))]
+    #[case("/1.1.1.1", Err("Expected some content before the '/'"))]
+    fn test_parse_logical_address(#[case] str: &str, #[case] addr: Result<LogicalAddress, &str>) {
+        assert_eq!(LogicalAddress::parse(str),addr);
     }
 }
