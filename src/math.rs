@@ -296,8 +296,8 @@ impl Junction {
 pub struct Link {
     id:u16,
     tiles: Vec<u16>,
-    origin: u32,
-    destination: u32
+    origin: Option<u32>,
+    destination: Option<u32>
 }
 
 impl<'a> Link {
@@ -305,8 +305,8 @@ impl<'a> Link {
         Link {
             id,
             tiles:Vec::new(),
-            origin:u32::MAX,
-            destination:u32::MAX
+            origin:None,
+            destination:None
         }
     }
 }
