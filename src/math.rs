@@ -32,14 +32,18 @@ impl Identifier {
         let mut segment:u16 = 0;
         let mut lane:i16 = 0;
         let mut state : ParsingState = ParsingState::Initial;
-        let mut digits : String = String::new();
+        let mut digits:&str;
+        let mut digits_start = 0;
+        let mut digits_end = 0;
         let mut i = 0;
         let mut allow_negative = false;
+        let mut index = 0;
         for c in str.chars() {
             match state {
                 ParsingState::Initial => {
                     if c.is_digit(10) || (c == '-' && allow_negative) {
-                        digits.push(c);
+                        digits_start = index;
+                        digits_end = index+1;
                         state = ParsingState::FoundDigit;
                     }
                     else if c == '-' {
@@ -48,9 +52,10 @@ impl Identifier {
                 },
                 ParsingState::FoundDigit => {
                     if c.is_digit(10) {
-                        digits.push(c);
+                        digits_end += 1;
                     }
                     else if c == '.' {
+                        digits = &str[digits_start..digits_end];
                         if i<4 {
                             if i==0 {
                                 link = digits.parse::<u16>().unwrap_or(0);
@@ -68,7 +73,8 @@ impl Identifier {
                             if i == 3 {
                                 allow_negative = true;
                             }
-                            digits.clear();
+                            digits_start = 0;
+                            digits_end = 0;
                             state = ParsingState::Initial;
                         }
                         else {
@@ -80,8 +86,10 @@ impl Identifier {
                     break;
                 }
             }
+            index+=1;
         }
         if let ParsingState::FoundDigit = state && i==3 {
+            digits = &str[digits_start..digits_end];
             lane = digits.parse::<i16>().unwrap();
         }
         Ok(Identifier {
