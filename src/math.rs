@@ -1,4 +1,5 @@
-use std::rc::{Rc,Weak};
+use std::arch::aarch64::uint32x4_t;
+use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use rstest::rstest;
 pub enum ParsingState {
@@ -277,30 +278,114 @@ pub struct Tile {
     segments: Vec<Box<Segment>>
 }
 
-pub struct Junction<'a> {
-    incoming : Vec<&'a Link<'a>>
-}
-pub struct Link<'a> {
-    tiles: Vec<Box<Tile>>,
-    origin: &'a Junction<'a>,
-    destination: &'a Junction<'a>
+pub struct Junction {
+    id:u32,
+    incoming : Vec<u16>,
+    outgoing : Vec<u16>
 }
 
+impl Junction {
+    pub fn new(id:u32) -> Junction {
+        Junction {
+            id,
+            incoming:Vec::new(),
+            outgoing:Vec::new()
+        }
+    }
+}
+pub struct Link {
+    id:u16,
+    tiles: Vec<u16>,
+    origin: u32,
+    destination: u32
+}
+
+impl<'a> Link {
+    pub fn new(id:u16) -> Link {
+        Link {
+            id,
+            tiles:Vec::new(),
+            origin:u32::MAX,
+            destination:u32::MAX
+        }
+    }
+}
 pub struct Routing {
     junction: u32,
     destination: LogicalAddress,
     next_hop: LogicalAddress
 }
 
-pub struct Network<'a> {
-    links : Vec<Box<Link<'a>>>,
-    junctions : Vec<Box<Junction<'a>>>,
+pub struct Network {
+    links : Vec<Box<Link>>,
+    junctions : Vec<Box<Junction>>,
     routing: Vec<Routing>
+}
+
+impl<'a> Network {
+    pub fn new(links:Vec<Box<Link>>, junctions:Vec<Box<Junction>>) -> Network {
+        Network {
+            links,
+            junctions,
+            routing:Vec::new()
+        }
+    }
+
+    pub fn num_links(&self) -> usize {
+        self.links.len()
+    }
+
+    pub fn num_junctions(&self) -> usize {
+        self.junctions.len()
+    }
+
+    pub fn num_route_info(&self) -> usize {
+        self.routing.len()
+    }
+}
+
+pub struct NetworkBuilder {
+    links:Vec<Box<Link>>,
+    junctions:Vec<Box<Junction>>,
+    next_junc:u32,
+    next_link:u16
+}
+
+impl<'a> NetworkBuilder {
+    pub fn new() -> NetworkBuilder {
+        NetworkBuilder {
+            links:Vec::new(),
+            junctions:Vec::new(),
+            next_junc:0,
+            next_link:0
+        }
+    }
+
+    pub fn create_link(&mut self) {
+        self.links.push(Box::new(Link::new(self.next_link)));
+        self.next_link+=1;
+        if let Some(j) = self.junctions.last_mut() {
+            j.outgoing.push(self.links.last().unwrap().id)
+        }
+    }
+
+    pub fn add_junction(&mut self) {
+        self.junctions.push(Box::new(Junction::new(self.next_junc)));
+        self.next_junc += 1;
+    }
+
+    pub fn add_straight(&mut self, pos:InertialCoord, length:f64) {
+
+    }
+
+    pub fn build(self) -> Box<Network> {
+        Box::new(Network::new(self.links, self.junctions))
+    }
 }
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
-    use crate::math::{Curve, Identifier, InertialCoord, LogicalAddress, LogicalCoord, Mask};
+    use crate::math::{Curve, Identifier, InertialCoord, LogicalAddress, LogicalCoord, Mask, Network, NetworkBuilder};
 
     #[test]
     fn test_inertial_coords() {
@@ -354,5 +439,16 @@ mod tests {
     #[case("/1.1.1.1", Err("Expected some content before the '/'"))]
     fn test_parse_logical_address(#[case] str: &str, #[case] addr: Result<LogicalAddress, &str>) {
         assert_eq!(LogicalAddress::parse(str),addr);
+    }
+
+    #[test]
+    fn test_network_builder_add() {
+        let mut sut = NetworkBuilder::new();
+        sut.add_junction();
+        assert_eq!(sut.junctions.len(), 1);
+        sut.create_link();
+        sut.add_straight(InertialCoord::new(0.0, 0.0, 0.0), 252.0);
+        let network = sut.build();
+        assert_eq!(1,network.num_links());
     }
 }
