@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 rstest = "0.18"
+rusqlite = { version = "0.38.0" }

@@ -2,6 +2,7 @@ use std::arch::aarch64::uint32x4_t;
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use rstest::rstest;
+use rusqlite::{Connection, Result, Error};
 pub enum ParsingState {
     Initial,
     FoundDigit,
@@ -309,6 +310,15 @@ impl<'a> Link {
             destination:None
         }
     }
+
+    pub fn from_query(id: u16, origin:u32, destination:u32) -> Link {
+        Link {
+            id,
+            tiles:Vec::new(),
+            origin:Some(origin),
+            destination:Some(destination)
+        }
+    }
 }
 pub struct Routing {
     junction: u32,
@@ -329,6 +339,30 @@ impl<'a> Network {
             junctions,
             routing:Vec::new()
         }
+    }
+
+    pub fn from_query(links:Vec<Box<Link>>) -> Network {
+        Network {
+            links,
+            junctions:Vec::new(),
+            routing:Vec::new()
+        }
+    }
+
+    pub fn empty() -> Network {
+        Network {
+            links:Vec::new(),
+            junctions:Vec::new(),
+            routing:Vec::new()
+        }
+    }
+
+    pub fn add_link(&mut self, link:Box<Link>) {
+        self.links.push(link);
+    }
+
+    pub fn set_links(&mut self, links:Vec<Box<Link>>) {
+        self.links = links;
     }
 
     pub fn num_links(&self) -> usize {
@@ -382,9 +416,40 @@ impl<'a> NetworkBuilder {
         Box::new(Network::new(self.links, self.junctions))
     }
 }
+
+struct LinkGateway {
+    connection: Connection,
+
+}
+
+impl LinkGateway {
+    pub fn new(connection: Connection) ->  LinkGateway {
+        LinkGateway {
+            connection
+        }
+    }
+
+    pub fn find_all(&self) -> Result<Vec<Box<Link>>, Error> {
+        let mut statement = self.connection.prepare("SELECT * FROM links;");
+        if let  Err(e) = statement {
+            return Err(e);
+        }
+        let mut statement = statement.unwrap();
+        let link_iter = statement.query_map([], |row| {
+            Ok(Link::from_query(row.get(0).unwrap(), row.get(1).unwrap(), row.get(2).unwrap()))
+        });
+        let mut links = Vec::new();
+        for link in link_iter.unwrap() {
+            links.push(Box::new(link.unwrap()));
+        }
+        Ok(links)
+    }
+}
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
+    use rusqlite::Connection;
+    use super::*;
     use crate::math::{Curve, Identifier, InertialCoord, LogicalAddress, LogicalCoord, Mask, Network, NetworkBuilder};
 
     #[test]
@@ -450,5 +515,15 @@ mod tests {
         sut.add_straight(InertialCoord::new(0.0, 0.0, 0.0), 252.0);
         let network = sut.build();
         assert_eq!(1,network.num_links());
+    }
+
+    #[rstest]
+    #[case("data/tests/LoadFromDB/onelink.db", 1)]
+    fn test_create_network_from_db(#[case] dbfile:&str, #[case] num_links:usize) {
+        let mut connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
+        let mut link_gw = LinkGateway::new(connection);
+        let mut network = Network::empty();
+        network.set_links(link_gw.find_all().unwrap_or(Vec::new()));
+        assert_eq!(num_links, network.num_links());
     }
 }
