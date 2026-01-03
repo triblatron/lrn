@@ -301,6 +301,21 @@ impl Junction {
             outgoing:Vec::new()
         }
     }
+
+    pub fn num_outgoing(&self) -> usize {
+        self.outgoing.len()
+    }
+
+    pub fn add_outgoing(&mut self, id:u16) {
+        self.outgoing.push(id);
+    }
+    pub fn num_incoming(&self) -> usize {
+        self.incoming.len()
+    }
+
+    pub fn add_incoming(&mut self, id:u16) {
+        self.incoming.push(id);
+    }
 }
 pub struct Link {
     id:u16,
@@ -377,12 +392,27 @@ impl<'a> Network {
         self.junctions = junctions;
     }
 
+    pub fn set_junction_connections(&mut self, connections: &mut (Vec<u32>, Vec<u16>, Vec<bool>)) {
+        let mut i=0;
+        for i in 0..connections.0.len() {
+            if connections.2[i] {
+                self.get_junc(connections.0[i]).add_outgoing(connections.1[i]);
+            }
+            else {
+                self.get_junc(connections.0[i]).add_incoming(connections.1[i]);
+            }
+        }
+    }
     pub fn num_links(&self) -> usize {
         self.links.len()
     }
 
     pub fn num_junctions(&self) -> usize {
         self.junctions.len()
+    }
+
+    pub fn get_junc(&mut self, id:u32) -> &mut Junction {
+        &mut self.junctions[(id - 1) as usize]
     }
 
     pub fn num_route_info(&self) -> usize {
@@ -483,6 +513,27 @@ impl<'a> JunctionGateway<'a> {
         }
         Ok(juncs)
     }
+
+    pub fn find_connections(&self) -> Result<(Vec<u32>, Vec<u16>, Vec<bool>)> {
+        let mut statement = self.connection.prepare("SELECT * FROM junctions_links;");
+        if let  Err(e) = statement {
+            return Err(e);
+        }
+        let mut statement = statement.unwrap();
+        let connection_iter = statement.query_map([], |row| {
+            Ok((row.get::<usize, u32>(0).unwrap() as u32, row.get::<usize,u16>(1).unwrap(), row.get::<usize,bool>(2).unwrap()))
+        });
+        let mut juncs = Vec::new();
+        let mut outgoing = Vec::new();
+        let mut links = Vec::new();
+        for connection in connection_iter.unwrap() {
+            let connection = connection.unwrap();
+            juncs.push(connection.0);
+            links.push(connection.1);
+            outgoing.push(connection.2);
+        }
+        Ok((juncs,links,outgoing))
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -557,8 +608,9 @@ mod tests {
     }
 
     #[rstest]
-    #[case("data/tests/LoadFromDB/onelink.db", 1, 1)]
-    fn test_create_network_from_db(#[case] dbfile:&str, #[case] num_links:usize, #[case] num_juncs:usize) {
+    #[case("data/tests/LoadFromDB/onelink.db", 1, 2, 1, 1, 0)]
+    #[case("data/tests/LoadFromDB/onelink.db", 1, 2, 2, 0, 1)]
+    fn test_create_network_from_db(#[case] dbfile:&str, #[case] num_links:usize, #[case] num_juncs:usize, #[case] junc_id:u32, #[case] num_outgoing:usize, #[case] num_incoming:usize) {
         let mut connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let mut link_gw = LinkGateway::new(&connection);
         let mut junc_gw = JunctionGateway::new(&connection);
@@ -567,5 +619,8 @@ mod tests {
         network.set_junctions(junc_gw.find_all().unwrap_or(Vec::new()));
         assert_eq!(num_links, network.num_links());
         assert_eq!(num_juncs, network.num_junctions());
+        network.set_junction_connections(&mut junc_gw.find_connections().unwrap_or((Vec::<u32>::new(), Vec::<u16>::new(), Vec::<bool>::new())));
+        assert_eq!(num_outgoing, network.get_junc(junc_id).num_outgoing());
+        assert_eq!(num_incoming, network.get_junc(junc_id).num_incoming());
     }
 }
