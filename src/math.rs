@@ -392,14 +392,13 @@ impl<'a> Network {
         self.junctions = junctions;
     }
 
-    pub fn set_junction_connections(&mut self, connections: &mut (Vec<u32>, Vec<u16>, Vec<bool>)) {
-        let mut i=0;
-        for i in 0..connections.0.len() {
-            if connections.2[i] {
-                self.get_junc(connections.0[i]).add_outgoing(connections.1[i]);
+    pub fn set_junction_connections(&mut self, connections: &mut Vec<(u32, u16, bool)>) {
+        for connection in connections {
+            if connection.2 {
+                self.get_junc(connection.0).add_outgoing(connection.1);
             }
             else {
-                self.get_junc(connections.0[i]).add_incoming(connections.1[i]);
+                self.get_junc(connection.0).add_incoming(connection.1);
             }
         }
     }
@@ -514,7 +513,7 @@ impl<'a> JunctionGateway<'a> {
         Ok(juncs)
     }
 
-    pub fn find_connections(&self) -> Result<(Vec<u32>, Vec<u16>, Vec<bool>)> {
+    pub fn find_connections(&self) -> Result<Vec<(u32,u16,bool)>> {
         let mut statement = self.connection.prepare("SELECT * FROM junctions_links;");
         if let  Err(e) = statement {
             return Err(e);
@@ -523,16 +522,12 @@ impl<'a> JunctionGateway<'a> {
         let connection_iter = statement.query_map([], |row| {
             Ok((row.get::<usize, u32>(0).unwrap() as u32, row.get::<usize,u16>(1).unwrap(), row.get::<usize,bool>(2).unwrap()))
         });
-        let mut juncs = Vec::new();
-        let mut outgoing = Vec::new();
-        let mut links = Vec::new();
+        let mut connections = Vec::new();
         for connection in connection_iter.unwrap() {
             let connection = connection.unwrap();
-            juncs.push(connection.0);
-            links.push(connection.1);
-            outgoing.push(connection.2);
+            connections.push(connection);
         }
-        Ok((juncs,links,outgoing))
+        Ok(connections)
     }
 }
 #[cfg(test)]
@@ -619,7 +614,7 @@ mod tests {
         network.set_junctions(junc_gw.find_all().unwrap_or(Vec::new()));
         assert_eq!(num_links, network.num_links());
         assert_eq!(num_juncs, network.num_junctions());
-        network.set_junction_connections(&mut junc_gw.find_connections().unwrap_or((Vec::<u32>::new(), Vec::<u16>::new(), Vec::<bool>::new())));
+        network.set_junction_connections(&mut junc_gw.find_connections().unwrap_or(Vec::<(u32,u16,bool)>::new()));
         assert_eq!(num_outgoing, network.get_junc(junc_id).num_outgoing());
         assert_eq!(num_incoming, network.get_junc(junc_id).num_incoming());
     }
