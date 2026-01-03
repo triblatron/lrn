@@ -293,6 +293,14 @@ impl Junction {
             outgoing:Vec::new()
         }
     }
+
+    pub fn from_query(id:u32) -> Junction {
+        Junction {
+            id,
+            incoming:Vec::new(),
+            outgoing:Vec::new()
+        }
+    }
 }
 pub struct Link {
     id:u16,
@@ -365,6 +373,10 @@ impl<'a> Network {
         self.links = links;
     }
 
+    pub fn set_junctions(&mut self, junctions:Vec<Box<Junction>>) {
+        self.junctions = junctions;
+    }
+
     pub fn num_links(&self) -> usize {
         self.links.len()
     }
@@ -417,13 +429,13 @@ impl<'a> NetworkBuilder {
     }
 }
 
-struct LinkGateway {
-    connection: Connection,
+struct LinkGateway<'a> {
+    connection: &'a Connection,
 
 }
 
-impl LinkGateway {
-    pub fn new(connection: Connection) ->  LinkGateway {
+impl<'a> LinkGateway<'a> {
+    pub fn new(connection: &'a Connection) ->  LinkGateway<'a> {
         LinkGateway {
             connection
         }
@@ -443,6 +455,33 @@ impl LinkGateway {
             links.push(Box::new(link.unwrap()));
         }
         Ok(links)
+    }
+}
+
+struct JunctionGateway<'a> {
+    connection: & 'a Connection,
+}
+
+impl<'a> JunctionGateway<'a> {
+    pub fn new(connection: &'a Connection) -> JunctionGateway<'a> {
+        JunctionGateway {
+            connection
+        }
+    }
+    pub fn find_all(&self) -> Result<Vec<Box<Junction>>, Error> {
+        let mut statement = self.connection.prepare("SELECT * FROM junctions;");
+        if let  Err(e) = statement {
+            return Err(e);
+        }
+        let mut statement = statement.unwrap();
+        let junc_iter = statement.query_map([], |row| {
+            Ok(Junction::from_query(row.get(0).unwrap()))
+        });
+        let mut juncs = Vec::new();
+        for junc in junc_iter.unwrap() {
+            juncs.push(Box::new(junc.unwrap()));
+        }
+        Ok(juncs)
     }
 }
 #[cfg(test)]
@@ -518,12 +557,15 @@ mod tests {
     }
 
     #[rstest]
-    #[case("data/tests/LoadFromDB/onelink.db", 1)]
-    fn test_create_network_from_db(#[case] dbfile:&str, #[case] num_links:usize) {
+    #[case("data/tests/LoadFromDB/onelink.db", 1, 1)]
+    fn test_create_network_from_db(#[case] dbfile:&str, #[case] num_links:usize, #[case] num_juncs:usize) {
         let mut connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
-        let mut link_gw = LinkGateway::new(connection);
+        let mut link_gw = LinkGateway::new(&connection);
+        let mut junc_gw = JunctionGateway::new(&connection);
         let mut network = Network::empty();
         network.set_links(link_gw.find_all().unwrap_or(Vec::new()));
+        network.set_junctions(junc_gw.find_all().unwrap_or(Vec::new()));
         assert_eq!(num_links, network.num_links());
+        assert_eq!(num_juncs, network.num_junctions());
     }
 }
