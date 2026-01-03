@@ -364,6 +364,13 @@ impl<'a> Network {
         }
     }
 
+    pub fn from(link_gw:LinkGateway, junc_gw:JunctionGateway) -> Network {
+        let mut network = Network::empty();
+        network.set_links(link_gw.find_all().unwrap_or(Vec::new()));
+        network.set_junctions(junc_gw.find_all().unwrap_or(Vec::new()));
+        network.set_junction_connections(&mut junc_gw.find_connections().unwrap_or(Vec::<(u32,u16,bool)>::new()));
+        network
+    }
     pub fn from_query(links:Vec<Box<Link>>) -> Network {
         Network {
             links,
@@ -606,15 +613,12 @@ mod tests {
     #[case("data/tests/LoadFromDB/onelink.db", 1, 2, 1, 1, 0)]
     #[case("data/tests/LoadFromDB/onelink.db", 1, 2, 2, 0, 1)]
     fn test_create_network_from_db(#[case] dbfile:&str, #[case] num_links:usize, #[case] num_juncs:usize, #[case] junc_id:u32, #[case] num_outgoing:usize, #[case] num_incoming:usize) {
-        let mut connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
-        let mut link_gw = LinkGateway::new(&connection);
-        let mut junc_gw = JunctionGateway::new(&connection);
-        let mut network = Network::empty();
-        network.set_links(link_gw.find_all().unwrap_or(Vec::new()));
-        network.set_junctions(junc_gw.find_all().unwrap_or(Vec::new()));
+        let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
+        let link_gw = LinkGateway::new(&connection);
+        let junc_gw = JunctionGateway::new(&connection);
+        let mut network = Network::from(link_gw, junc_gw);
         assert_eq!(num_links, network.num_links());
         assert_eq!(num_juncs, network.num_junctions());
-        network.set_junction_connections(&mut junc_gw.find_connections().unwrap_or(Vec::<(u32,u16,bool)>::new()));
         assert_eq!(num_outgoing, network.get_junc(junc_id).num_outgoing());
         assert_eq!(num_incoming, network.get_junc(junc_id).num_incoming());
     }
