@@ -612,6 +612,8 @@ mod tests {
     #[rstest]
     #[case("data/tests/LoadFromDB/onelink.db", 1, 2, 1, 1, 0)]
     #[case("data/tests/LoadFromDB/onelink.db", 1, 2, 2, 0, 1)]
+    #[case("data/tests/LoadFromDB/twolinks.db", 2, 3, 2, 1, 1)]
+    #[case("data/tests/LoadFromDB/twolinks.db", 2, 3, 3, 0, 1)]
     fn test_create_network_from_db(#[case] dbfile:&str, #[case] num_links:usize, #[case] num_juncs:usize, #[case] junc_id:u32, #[case] num_outgoing:usize, #[case] num_incoming:usize) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let link_gw = LinkGateway::new(&connection);
