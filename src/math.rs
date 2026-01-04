@@ -282,7 +282,7 @@ pub struct Tile {
 }
 
 impl Tile {
-    pub fn from_query(id: u16, link:u16) -> Tile {
+    fn from_query(id: u16, link:u16) -> Tile {
         Tile {
             id,
             link,
@@ -306,7 +306,7 @@ impl Junction {
         }
     }
 
-    pub fn from_query(id:u32) -> Junction {
+    fn from_query(id:u32) -> Junction {
         Junction {
             id,
             incoming:Vec::new(),
@@ -346,7 +346,7 @@ impl<'a> Link {
         }
     }
 
-    pub fn from_query(id: u16, origin:u32, destination:u32) -> Link {
+    fn from_query(id: u16, origin:u32, destination:u32) -> Link {
         Link {
             id,
             tiles:Vec::new(),
