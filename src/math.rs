@@ -610,16 +610,28 @@ mod tests {
     }
 
     #[rstest]
-    #[case("data/tests/LoadFromDB/onelink.db", 1, 2, 1, 1, 0)]
-    #[case("data/tests/LoadFromDB/onelink.db", 1, 2, 2, 0, 1)]
-    #[case("data/tests/LoadFromDB/twolinks.db", 2, 3, 2, 1, 1)]
-    #[case("data/tests/LoadFromDB/twolinks.db", 2, 3, 3, 0, 1)]
-    fn test_create_network_from_db(#[case] dbfile:&str, #[case] num_links:usize, #[case] num_juncs:usize, #[case] junc_id:u32, #[case] num_outgoing:usize, #[case] num_incoming:usize) {
+    #[case("data/tests/LoadFromDB/onelink.db", 1)]
+    #[case("data/tests/LoadFromDB/onelink.db", 1)]
+    #[case("data/tests/LoadFromDB/twolinks.db", 2)]
+    #[case("data/tests/LoadFromDB/twolinks.db", 2)]
+    fn test_create_network_from_db_links(#[case] dbfile:&str, #[case] num_links:usize) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let link_gw = LinkGateway::new(&connection);
         let junc_gw = JunctionGateway::new(&connection);
         let mut network = Network::from(link_gw, junc_gw);
         assert_eq!(num_links, network.num_links());
+    }
+
+    #[rstest]
+    #[case("data/tests/LoadFromDB/onelink.db", 2, 1, 1, 0)]
+    #[case("data/tests/LoadFromDB/onelink.db", 2, 2, 0, 1)]
+    #[case("data/tests/LoadFromDB/twolinks.db", 3, 2, 1, 1)]
+    #[case("data/tests/LoadFromDB/twolinks.db", 3, 3, 0, 1)]
+    fn test_create_network_from_db_junctions(#[case]dbfile:&str, #[case] num_juncs:usize, #[case] junc_id:u32, #[case] num_outgoing:usize, #[case] num_incoming:usize) {
+        let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
+        let link_gw = LinkGateway::new(&connection);
+        let junc_gw = JunctionGateway::new(&connection);
+        let mut network = Network::from(link_gw, junc_gw);
         assert_eq!(num_juncs, network.num_junctions());
         assert_eq!(num_outgoing, network.get_junc(junc_id).num_outgoing());
         assert_eq!(num_incoming, network.get_junc(junc_id).num_incoming());
