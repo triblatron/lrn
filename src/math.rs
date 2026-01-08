@@ -2,7 +2,7 @@ use std::arch::aarch64::uint32x4_t;
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use rstest::rstest;
-use rusqlite::{Connection, Result, Error};
+use rusqlite::{Connection, Result, Error, Row};
 pub enum ParsingState {
     Initial,
     FoundDigit,
@@ -271,10 +271,42 @@ impl Curve {
     }
 }
 
+pub enum SegmentType {
+    Unknown,
+    Straight
+}
 pub struct Segment {
-    reference: Vec<Box<Curve>>
+    tile:u16,
+    x:f64,
+    y:f64,
+    z:f64,
+    h:f64,
+    p:f64,
+    r:f64,
+    segment_type:SegmentType
 }
 
+impl Segment {
+    pub fn from_query(row:&Row) -> Segment {
+        Segment {
+            tile:row.get("tile_id").unwrap(),
+            x:row.get("x").unwrap(),
+            y:row.get("y").unwrap(),
+            z:row.get("z").unwrap(),
+            h:row.get("h").unwrap(),
+            p:row.get("p").unwrap(),
+            r:row.get("r").unwrap(),
+            segment_type:Segment::segment_type_from_field(row.get("type").unwrap())
+        }
+    }
+
+    pub fn segment_type_from_field(field:i32) -> SegmentType {
+        if field == 0 {
+            return SegmentType::Straight
+        }
+        SegmentType::Unknown
+    }
+}
 pub struct Tile {
     id:u16,
     link:u16,
@@ -365,6 +397,7 @@ pub struct Network {
     links : Vec<Box<Link>>,
     junctions : Vec<Box<Junction>>,
     tiles: Vec<Box<Tile>>,
+    segments: Vec<Box<Segment>>,
     routing: Vec<Routing>
 }
 
@@ -374,16 +407,22 @@ impl<'a> Network {
             links,
             junctions,
             tiles: Vec::new(),
+            segments: Vec::new(),
             routing:Vec::new()
         }
     }
 
-    pub fn from(link_gw:LinkGateway, junc_gw:JunctionGateway, tile_gw: TileGateway) -> Network {
+    pub fn from(connection:&Connection) -> Network {
+        let link_gw:LinkGateway = LinkGateway::new(connection);
+        let junc_gw:JunctionGateway = JunctionGateway::new(connection);
+        let tile_gw: TileGateway = TileGateway::new(connection);
+        let seg_gw : SegmentGateway = SegmentGateway::new(connection);
         let mut network = Network::empty();
         network.set_links(link_gw.find_all().unwrap_or(Vec::new()));
         network.set_junctions(junc_gw.find_all().unwrap_or(Vec::new()));
         network.set_junction_connections(&mut junc_gw.find_connections().unwrap_or(Vec::<(u32,u16,bool)>::new()));
         network.set_tiles(tile_gw.find_all().unwrap_or(Vec::new()));
+        network.set_segments(seg_gw.find_all().unwrap_or(Vec::new()));
         network
     }
 
@@ -392,6 +431,7 @@ impl<'a> Network {
             links:Vec::new(),
             junctions:Vec::new(),
             tiles: Vec::new(),
+            segments:Vec::new(),
             routing:Vec::new()
         }
     }
@@ -421,6 +461,11 @@ impl<'a> Network {
             }
         }
     }
+
+    pub fn set_segments(&mut self , segments:Vec<Box<Segment>>) {
+        self.segments = segments;
+    }
+
     pub fn num_links(&self) -> usize {
         self.links.len()
     }
@@ -437,6 +482,9 @@ impl<'a> Network {
         self.tiles.len()
     }
 
+    pub fn num_segments(&self) -> usize {
+        self.segments.len()
+    }
 
     pub fn num_route_info(&self) -> usize {
         self.routing.len()
@@ -582,6 +630,33 @@ impl<'a> TileGateway<'a> {
     }
 }
 
+struct SegmentGateway<'a> {
+    connection: &'a Connection
+}
+
+impl<'a> SegmentGateway<'a> {
+    pub fn new(connection: &Connection) -> SegmentGateway {
+        SegmentGateway {
+            connection
+        }
+    }
+
+    pub fn find_all(&self) -> Result<Vec<Box<Segment>>, Error> {
+        let mut statement = self.connection.prepare("SELECT * FROM segments;");
+        if let  Err(e) = statement {
+            return Err(e);
+        }
+        let mut statement = statement.unwrap();
+        let seg_iter = statement.query_map([], |row| {
+            Ok(Segment::from_query(row))
+        });
+        let mut segments = Vec::new();
+        for segment in seg_iter.unwrap() {
+            segments.push(Box::new(segment.unwrap()));
+        }
+        Ok(segments)
+    }
+}
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
@@ -661,10 +736,7 @@ mod tests {
     #[case("data/tests/LoadFromDB/twolinks.db", 2)]
     fn test_create_network_from_db_links(#[case] dbfile:&str, #[case] num_links:usize) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
-        let link_gw = LinkGateway::new(&connection);
-        let junc_gw = JunctionGateway::new(&connection);
-        let tile_gw = TileGateway::new(&connection);
-        let mut network = Network::from(link_gw, junc_gw, tile_gw);
+        let mut network = Network::from(&connection);
         assert_eq!(num_links, network.num_links());
     }
 
@@ -675,10 +747,7 @@ mod tests {
     #[case("data/tests/LoadFromDB/twolinks.db", 3, 3, 0, 1)]
     fn test_create_network_from_db_junctions(#[case]dbfile:&str, #[case] num_juncs:usize, #[case] junc_id:u32, #[case] num_outgoing:usize, #[case] num_incoming:usize) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
-        let link_gw = LinkGateway::new(&connection);
-        let junc_gw = JunctionGateway::new(&connection);
-        let tile_gw = TileGateway::new(&connection);
-        let mut network = Network::from(link_gw, junc_gw, tile_gw);
+        let mut network = Network::from(&connection);
         assert_eq!(num_juncs, network.num_junctions());
         assert_eq!(num_outgoing, network.get_junc(junc_id).num_outgoing());
         assert_eq!(num_incoming, network.get_junc(junc_id).num_incoming());
@@ -688,10 +757,15 @@ mod tests {
     #[case("data/tests/LoadFromDB/onelink.db", 2, 1)]
     fn test_create_network_from_db_tiles(#[case] dbfile:&str, #[case] num_tiles:usize, #[case] tile_id:u16) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
-        let link_gw = LinkGateway::new(&connection);
-        let junc_gw = JunctionGateway::new(&connection);
-        let tile_gw = TileGateway::new(&connection);
-        let mut network = Network::from(link_gw, junc_gw, tile_gw);
+        let mut network = Network::from(&connection);
         assert_eq!(num_tiles, network.num_tiles());
+    }
+
+    #[rstest]
+    #[case("data/tests/LoadFromDB/onelink.db", 2)]
+    fn test_create_network_from_db_segments(#[case] dbfile:&str, #[case] num_segments:usize) {
+        let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
+        let mut network = Network::from(&connection);
+        assert_eq!(num_segments, network.num_segments());
     }
 }
