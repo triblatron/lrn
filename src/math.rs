@@ -338,6 +338,22 @@ impl Junction {
         }
     }
 
+    fn build_routes(&self, network:& Network, routing:&mut Routing) -> () {
+        // Build immediately accessible hops
+        for (index,link) in self.outgoing.iter().enumerate() {
+            let id = (index+1) as u16;
+            routing.hops.push(Hop::from(self.id,
+                                        LogicalAddress::new(Identifier::new(id as u16, 0, 0, 0), Mask::new(true,false,false,false)),
+                                        LogicalAddress::new(Identifier::new(id as u16, 0, 0,0), Mask::new(true,false,false,false)), 90));
+        }
+        for (index,link) in self.incoming.iter().enumerate() {
+            let id = (index+1) as u16;
+            routing.hops.push(Hop::from(self.id,
+                                        LogicalAddress::new(Identifier::new(id as u16, 0, 0, 0), Mask::new(true,false,false,false)),
+                                        LogicalAddress::new(Identifier::new(id as u16, 0, 0,0), Mask::new(true,false,false,false)), 270));
+        }
+    }
+
     fn from_query(id:u32) -> Junction {
         Junction {
             id,
@@ -387,18 +403,41 @@ impl<'a> Link {
         }
     }
 }
-pub struct Routing {
+pub struct Hop {
     junction: u32,
     destination: LogicalAddress,
-    next_hop: LogicalAddress
+    next_hop: LogicalAddress,
+    exit: u32
 }
 
+pub struct Routing {
+    hops: Vec<Hop>,
+}
+
+impl Hop {
+    pub fn from(junction:u32, destination:LogicalAddress, next_hop: LogicalAddress, exit:u32) -> Hop {
+        Hop {
+            junction,
+            destination,
+            next_hop,
+            exit
+        }
+    }
+}
+impl Routing {
+    pub fn new() -> Routing {
+        Routing {
+            hops: Vec::new(),
+        }
+    }
+}
 pub struct Network {
     links : Vec<Box<Link>>,
     junctions : Vec<Box<Junction>>,
     tiles: Vec<Box<Tile>>,
     segments: Vec<Box<Segment>>,
-    routing: Vec<Routing>
+    // One for each Junction
+    routing: Vec<Box<Routing>>
 }
 
 impl<'a> Network {
@@ -423,7 +462,17 @@ impl<'a> Network {
         network.set_junction_connections(&mut junc_gw.find_connections().unwrap_or(Vec::<(u32,u16,bool)>::new()));
         network.set_tiles(tile_gw.find_all().unwrap_or(Vec::new()));
         network.set_segments(seg_gw.find_all().unwrap_or(Vec::new()));
+        network.build_routes();
         network
+    }
+
+    fn build_routes(&mut self) {
+        for (id, junc) in self.junctions.iter().enumerate() {
+            let mut routing = Routing::new();
+
+            junc.build_routes(self, &mut routing);
+            self.routing.push(Box::new(routing));
+        }
     }
 
     pub fn empty() -> Network {
@@ -434,6 +483,45 @@ impl<'a> Network {
             segments:Vec::new(),
             routing:Vec::new()
         }
+    }
+
+    pub fn route(&self, src_link:u16, dest_link:u16, to_dest:bool) -> Option<&Hop> {
+        let src_link = self.get_link(src_link);
+        let origin = src_link.origin;
+        let dest = src_link.destination;
+
+        let  mut routing:Option<&Routing> = None;
+        if let Some(origin) = origin && !to_dest {
+            routing = self.get_routing(origin);
+        };
+        if let Some(dest) = dest && to_dest {
+            routing = self.get_routing(dest);
+        }
+        if let Some(routing) = routing {
+            for hop in routing.hops.iter() {
+                if let Some(_) = origin {
+                    if dest_link == hop.destination.id.link {
+                        return Some(hop);
+                    }
+                }
+                if let Some(_) = dest {
+                    if dest_link == hop.destination.id.link {
+                        return Some(hop);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    pub fn get_routing(&self, junc_id:u32) -> Option<&Routing> {
+        if (junc_id as usize) < self.routing.len() {
+            return Some(self.routing[junc_id as usize].as_ref());
+        }
+        None
+    }
+    pub fn get_link(&self, id:u16) -> &Link {
+        &self.links[(id-1) as usize]
     }
 
     pub fn add_link(&mut self, link:Box<Link>) {
@@ -454,10 +542,10 @@ impl<'a> Network {
     pub fn set_junction_connections(&mut self, connections: &mut Vec<(u32, u16, bool)>) {
         for connection in connections {
             if connection.2 {
-                self.get_junc(connection.0).add_outgoing(connection.1);
+                self.get_junc_mut(connection.0).add_outgoing(connection.1);
             }
             else {
-                self.get_junc(connection.0).add_incoming(connection.1);
+                self.get_junc_mut(connection.0).add_incoming(connection.1);
             }
         }
     }
@@ -474,10 +562,22 @@ impl<'a> Network {
         self.junctions.len()
     }
 
-    pub fn get_junc(&mut self, id:u32) -> &mut Junction {
+    pub fn get_junc_mut(&mut self, id:u32) -> &mut Junction {
         &mut self.junctions[(id - 1) as usize]
     }
 
+    pub fn get_junc(&self, id:u32) -> &Junction {
+        &self.junctions[(id-1) as usize]
+    }
+
+    pub fn get_junc_if_exists(&self, id: Option<u32>) -> Option<&Junction> {
+        if let Some(u32) = id {
+            Some(self.get_junc(id.unwrap()))
+        }
+        else {
+            None
+        }
+    }
     pub fn num_tiles(&self) -> usize {
         self.tiles.len()
     }
@@ -749,8 +849,8 @@ mod tests {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let mut network = Network::from(&connection);
         assert_eq!(num_juncs, network.num_junctions());
-        assert_eq!(num_outgoing, network.get_junc(junc_id).num_outgoing());
-        assert_eq!(num_incoming, network.get_junc(junc_id).num_incoming());
+        assert_eq!(num_outgoing, network.get_junc_mut(junc_id).num_outgoing());
+        assert_eq!(num_incoming, network.get_junc_mut(junc_id).num_incoming());
     }
 
     #[rstest]
@@ -767,5 +867,20 @@ mod tests {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let mut network = Network::from(&connection);
         assert_eq!(num_segments, network.num_segments());
+    }
+
+    #[rstest]
+    #[case("data/tests/LoadFromDB/onelink.db", 1, 1, true, true, 1, 270)]
+    fn test_routing(#[case] dbfile:&str, #[case] source_link:u16, #[case] dest_link: u16, #[case] to_dest:bool, #[case] exists:bool, #[case] next_hop:u16, #[case] next_exit:u16) {
+        let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
+        let mut network = Network::from(&connection);
+
+        let actual = network.route(source_link, dest_link, to_dest);
+        assert_eq!(exists, actual.is_some());
+        if let Some(actual) = actual {
+            assert_eq!(next_hop, actual.next_hop.id.link);
+
+        }
+
     }
 }
