@@ -341,16 +341,14 @@ impl Junction {
     fn build_routes(&self, network:& Network, routing:&mut Routing) -> () {
         // Build immediately accessible hops
         for (index,link) in self.outgoing.iter().enumerate() {
-            let id = (index+1) as u16;
             routing.hops.push(Hop::from(self.id,
-                                        LogicalAddress::new(Identifier::new(id as u16, 0, 0, 0), Mask::new(true,false,false,false)),
-                                        LogicalAddress::new(Identifier::new(id as u16, 0, 0,0), Mask::new(true,false,false,false)), 90));
+                                        LogicalAddress::new(Identifier::new(*link, 0, 0, 0), Mask::new(true,false,false,false)),
+                                        LogicalAddress::new(Identifier::new(*link, 0, 0,0), Mask::new(true,false,false,false)), 90));
         }
         for (index,link) in self.incoming.iter().enumerate() {
-            let id = (index+1) as u16;
             routing.hops.push(Hop::from(self.id,
-                                        LogicalAddress::new(Identifier::new(id as u16, 0, 0, 0), Mask::new(true,false,false,false)),
-                                        LogicalAddress::new(Identifier::new(id as u16, 0, 0,0), Mask::new(true,false,false,false)), 270));
+                                        LogicalAddress::new(Identifier::new(*link, 0, 0, 0), Mask::new(true,false,false,false)),
+                                        LogicalAddress::new(Identifier::new(*link, 0, 0,0), Mask::new(true,false,false,false)), 270));
         }
     }
 
@@ -871,6 +869,7 @@ mod tests {
 
     #[rstest]
     #[case("data/tests/LoadFromDB/onelink.db", 1, 1, true, true, 1, 270)]
+    #[case("data/tests/LoadFromDB/twolinks.db", 1, 2, true, true, 2, 90)]
     fn test_routing(#[case] dbfile:&str, #[case] source_link:u16, #[case] dest_link: u16, #[case] to_dest:bool, #[case] exists:bool, #[case] next_hop:u16, #[case] next_exit:u16) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let mut network = Network::from(&connection);
