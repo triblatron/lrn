@@ -582,7 +582,6 @@ impl<'a> Network {
         for hop in &self.routing.borrow().hops {
             let junc = self.get_junc(hop.junction);
             let dest = self.get_link(hop.destination.id.link);
-            let next = self.get_link(hop.next_hop.id.link);
             if  junc.id == junc_id && dest.id == dest_link && to_dest {
                 return Some(*hop);
             }
@@ -593,9 +592,6 @@ impl<'a> Network {
         None
     }
 
-    pub fn get_routing(&self, junc_id:u32) -> Option<Ref<Routing>> {
-        Some(self.routing.borrow())
-    }
     pub fn get_link(&self, id:u16) -> &Link {
         &self.links[(id-1) as usize]
     }
