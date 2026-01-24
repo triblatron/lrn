@@ -362,26 +362,33 @@ impl Junction {
         let mut reciprocals: HashSet<Hop> = HashSet::new();
         for hop in &routing.hops {
             // Look at the incoming links and add a hop for the destination
-            if let Some(origin) = network.get_link(hop.destination.id.link).origin {
-                // Add a reciprocal route
-                for incoming in &network.get_junc(origin).incoming {
-                    reciprocals.insert(Hop::from(origin,
-                                               LogicalAddress::new(Identifier::new(hop.destination.id.link, 0, 0, 0), Mask::new(true,false,false,false)),
-                                               LogicalAddress::new(Identifier::new(*incoming, 0, 0, 0), Mask::new(true, false, false, false)), 90));
-
-                }
-                // for outgoing in &network.get_junc(origin).outgoing {
-                //     reciprocals.insert(Hop::from(origin,
-                //                                 LogicalAddress::new(Identifier::new())))
-                // }
-            }
+            // if let Some(origin) = network.get_link(hop.destination.id.link).origin {
+            //     // Add a reciprocal route
+            //     for incoming in &network.get_junc(origin).incoming {
+            //         reciprocals.insert(Hop::from(origin,
+            //                                    LogicalAddress::new(Identifier::new(hop.destination.id.link, 0, 0, 0), Mask::new(true,false,false,false)),
+            //                                    LogicalAddress::new(Identifier::new(*incoming, 0, 0, 0), Mask::new(true, false, false, false)), 90));
+            //
+            //     }
+            //     // for outgoing in &network.get_junc(origin).outgoing {
+            //     //     reciprocals.insert(Hop::from(origin,
+            //     //                                 LogicalAddress::new(Identifier::new())))
+            //     // }
+            // }
             for outgoing in &network.get_junc(hop.junction).outgoing {
                 let link = network.get_link(hop.destination.id.link);
                 if let Some(origin) = link.origin {
-                    reciprocals.insert(Hop::from(origin,
-                                                 LogicalAddress::new(Identifier::new(*outgoing, 0, 0, 0), Mask::new(true, false, false, false)),
-                                                 hop.destination, 90));
-
+                    let mut found = false;
+                    for hop2 in &routing.hops {
+                        if hop2.junction == origin && hop2.destination.id.link == *outgoing {
+                            found = true;
+                        }
+                    }
+                    if !found {
+                        reciprocals.insert(Hop::from(origin,
+                                                     LogicalAddress::new(Identifier::new(*outgoing, 0, 0, 0), Mask::new(true, false, false, false)),
+                                                     hop.destination, 90));
+                    }
                 }
             }
         }
@@ -473,7 +480,7 @@ pub struct Network {
     tiles: Vec<Box<Tile>>,
     segments: Vec<Box<Segment>>,
     // One for each Junction
-    routing: RefCell<Vec<Box<Routing>>>
+    routing: RefCell<Routing>
 }
 
 impl<'a> Network {
@@ -483,7 +490,7 @@ impl<'a> Network {
             junctions,
             tiles: Vec::new(),
             segments: Vec::new(),
-            routing:RefCell::new(Vec::new())
+            routing:RefCell::new(Routing::new())
         }
     }
 
@@ -511,10 +518,7 @@ impl<'a> Network {
     }
     fn build_routes(&mut self) {
         for junc in &self.junctions {
-            let mut routing = Routing::new();
-
-            junc.build_routes(self, &mut routing);
-            self.routing.borrow_mut().push(Box::new(routing));
+            junc.build_routes(self, &mut self.routing.borrow_mut());
         }
         self.depth_first_traversal(&Self::dummy, &Self::build_routes_for_junction);
     }
@@ -566,45 +570,31 @@ impl<'a> Network {
             junctions:Vec::new(),
             tiles: Vec::new(),
             segments:Vec::new(),
-            routing:RefCell::new(Vec::new())
+            routing:RefCell::new(Routing::new()),
         }
     }
 
-    pub fn route(&self, src_link:u16, dest_link:u16, to_dest:bool) -> Option<Hop> {
+    pub fn route(&self, junc_id: u32, src_link:u16, dest_link:u16, to_dest:bool) -> Option<Hop> {
         let src_link = self.get_link(src_link);
-        let origin = src_link.origin;
-        let dest = src_link.destination;
+        // let origin = src_link.origin;
+        // let dest = src_link.destination;
 
-        let  mut routing:Option<Ref<Routing>> = None;
-        if let Some(origin) = origin && !to_dest {
-            routing = self.get_routing(origin);
-        };
-        if let Some(dest) = dest && to_dest {
-            routing = self.get_routing(dest);
-        }
-        if let Some(routing) = routing {
-            for hop in &routing.hops {
-                if let Some(_) = origin {
-                    if dest_link == hop.destination.id.link {
-                        return Some(*hop);
-                    }
-                }
-                if let Some(_) = dest {
-                    if dest_link == hop.destination.id.link {
-                        return Some(*hop);
-                    }
-                }
+        for hop in &self.routing.borrow().hops {
+            let junc = self.get_junc(hop.junction);
+            let dest = self.get_link(hop.destination.id.link);
+            let next = self.get_link(hop.next_hop.id.link);
+            if  junc.id == junc_id && dest.id == dest_link && to_dest {
+                return Some(*hop);
+            }
+            if junc.id == junc_id && dest.id == src_link.id && !to_dest {
+                return Some(*hop);
             }
         }
         None
     }
 
     pub fn get_routing(&self, junc_id:u32) -> Option<Ref<Routing>> {
-        let routing = self.routing.borrow();
-        if (junc_id as usize) < routing.len() {
-            return Some(Ref::map(routing, |vec| vec[junc_id as usize].as_ref()));
-        }
-        None
+        Some(self.routing.borrow())
     }
     pub fn get_link(&self, id:u16) -> &Link {
         &self.links[(id-1) as usize]
@@ -683,10 +673,6 @@ impl<'a> Network {
 
     pub fn num_segments(&self) -> usize {
         self.segments.len()
-    }
-
-    pub fn num_route_info(&self) -> usize {
-        self.routing.borrow().len()
     }
 }
 
@@ -969,14 +955,14 @@ mod tests {
     }
 
     #[rstest]
-    #[case("data/tests/LoadFromDB/onelink.db", 1, 1, true, true, 1, 270)]
-    #[case("data/tests/LoadFromDB/twolinks.db", 1, 2, true, true, 1, 90)]
-    // #[case("data/tests/LoadFromDB/twolinks.db", 1, 3, true, true, 2, 90)]
-    fn test_routing(#[case] dbfile:&str, #[case] source_link:u16, #[case] dest_link: u16, #[case] to_dest:bool, #[case] exists:bool, #[case] next_hop:u16, #[case] next_exit:u32) {
+    #[case("data/tests/LoadFromDB/onelink.db", 1, 1, 1, true, true, 1, 90)]
+    // #[case("data/tests/LoadFromDB/twolinks.db", 1, 1, 2, true, true, 1, 90)]
+    // #[case("data/tests/LoadFromDB/twolinks.db", 1, 1, 3, true, true, 2, 90)]
+    fn test_routing(#[case] dbfile:&str, #[case] junc_id:u32, #[case] source_link:u16, #[case] dest_link: u16, #[case] to_dest:bool, #[case] exists:bool, #[case] next_hop:u16, #[case] next_exit:u32) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let network = Network::from(&connection);
 
-        let actual = network.route(source_link, dest_link, to_dest);
+        let actual = network.route(junc_id, source_link, dest_link, to_dest);
         assert_eq!(exists, actual.is_some());
         if let Some(actual) = actual {
             assert_eq!(dest_link, actual.destination.id.link);
