@@ -1,4 +1,4 @@
-use std::cell::{Ref,RefCell};
+use std::cell::{RefCell};
 use std::collections::HashSet;
 use rusqlite::{Connection, Result, Error, Row};
 
