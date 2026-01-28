@@ -1,7 +1,6 @@
 use std::cell::{RefCell};
 use std::collections::HashSet;
 use rusqlite::{Connection, Result, Error, Row};
-use rusqlite::fallible_iterator::FallibleIterator;
 
 pub enum ParsingState {
     Initial,
@@ -490,9 +489,6 @@ pub struct Network {
     routing: RefCell<Routing>
 }
 
-type JuncFunc = fn(&Junction) -> ();
-
-
 impl<'a> Network {
     pub fn new(links:Vec<Box<Link>>, junctions:Vec<Box<Junction>>) -> Network {
         Network {
@@ -530,7 +526,7 @@ impl<'a> Network {
         for junc in &self.junctions {
             junc.build_routes(self, &mut self.routing.borrow_mut());
         }
-        let printStep = |junc:&Junction, link:&Link, exit:u32, dest_junc:u32| {
+        let print_step = |junc:&Junction, link:&Link, exit:u32, dest_junc:u32| {
             self.routing.borrow_mut().hops.insert(Hop::from(junc.id,
                                                             LogicalAddress::new(Identifier::new(link.id, 0, 0, 0), Mask::new(true, false, false, false)),
                                                             LogicalAddress::new(Identifier::new(link.id, 0, 0, 0), Mask::new(true, false, false, false)),
@@ -539,12 +535,13 @@ impl<'a> Network {
             );
             println!("{} {} {} {}", junc.id, link.id, exit, dest_junc);
         };
-            self.depth_first_traversal(&printStep, |junc:&Junction| println!("{}", junc.id));
+            self.depth_first_traversal(&print_step, |junc:&Junction| println!("{}", junc.id));
 
     }
 
-    fn depth_first_traversal_helper<LinkFunc>(& self, junc:&Junction, visited:&mut HashSet<u32>, path: &mut Vec<u32>, link_func:&LinkFunc, junc_func:&JuncFunc) -> ()
-    where LinkFunc : Fn(&Junction, &Link, u32, u32)
+    fn depth_first_traversal_helper<LinkFunc, JuncFunc>(& self, junc:&Junction, visited:&mut HashSet<u32>, path: &mut Vec<u32>, link_func:&LinkFunc, junc_func:&JuncFunc) -> ()
+    where LinkFunc : Fn(&Junction, &Link, u32, u32),
+        JuncFunc: Fn(&Junction)
     {
         if !visited.contains(&junc.id) {
             visited.insert(junc.id);
@@ -573,8 +570,9 @@ impl<'a> Network {
         }
     }
 
-    pub fn depth_first_traversal<LinkFunc>(&self, link_func:&LinkFunc, junc_func:JuncFunc) -> ()
-    where LinkFunc: Fn(&Junction, &Link, u32, u32)
+    pub fn depth_first_traversal<LinkFunc, JuncFunc>(&self, link_func:&LinkFunc, junc_func:JuncFunc) -> ()
+    where LinkFunc: Fn(&Junction, &Link, u32, u32),
+        JuncFunc: Fn(&Junction)
     {
         let mut visited: HashSet<u32> = HashSet::new();
         let mut path:Vec<u32> = Vec::new();
@@ -836,7 +834,7 @@ struct SegmentGateway<'a> {
 }
 
 impl<'a> SegmentGateway<'a> {
-    pub fn new(connection: &Connection) -> SegmentGateway {
+    pub fn new(connection: &Connection) -> SegmentGateway<'_> {
         SegmentGateway {
             connection
         }
@@ -883,7 +881,7 @@ mod tests {
 
     #[rstest]
     #[case(-1.825, 50.0, 0.0)]
-    fn test_logical_to_inertial_coords(#[case] offset: f64, #[case] distance: f64, #[case] loft: f64) {
+    fn test_logical_to_inertial_coords(#[case] _offset: f64, #[case] _distance: f64, #[case] _loft: f64) {
         let sut = Curve::new();
         let logical = LogicalCoord::new(LogicalAddress::new(Identifier::new(1,1,1,0),Mask::new(true,true,true,false)), -1.825, 50.0, 0.0);
         let mut inertial = InertialCoord::new(0.0, 0.0, 0.0);
@@ -955,8 +953,8 @@ mod tests {
     }
 
     #[rstest]
-    #[case("data/tests/LoadFromDB/onelink.db", 2, 1)]
-    fn test_create_network_from_db_tiles(#[case] dbfile:&str, #[case] num_tiles:usize, #[case] tile_id:u16) {
+    #[case("data/tests/LoadFromDB/onelink.db", 2)]
+    fn test_create_network_from_db_tiles(#[case] dbfile:&str, #[case] num_tiles:usize) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let network = Network::from(&connection);
         assert_eq!(num_tiles, network.num_tiles());
