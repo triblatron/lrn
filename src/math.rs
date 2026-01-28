@@ -577,8 +577,8 @@ impl<'a> Network {
         let mut visited: HashSet<u32> = HashSet::new();
         let mut path:Vec<u32> = Vec::new();
         if !self.junctions.is_empty() {
-            let junc = &self.junctions[0];
-            self.depth_first_traversal_helper(self.get_junc(1), &mut visited, &mut path, link_func, &junc_func);
+            let junc = &self.get_junc(1);
+            self.depth_first_traversal_helper(junc, &mut visited, &mut path, link_func, &junc_func);
         }
     }
 
