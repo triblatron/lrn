@@ -534,7 +534,18 @@ impl<'a> Network {
                                                             exit
             )
             );
-            println!("{} {} {} {}", junc.id, link.id, exit, dest_junc);
+            println!("origin_junc: {} link: {} exit: {} dest_junc: {}", junc.id, link.id, exit, dest_junc);
+            // For each outgoing link reachable directly from dest_junc, add a route from origin to origin via link
+            let dest_junc = self.get_junc(dest_junc);
+            for outgoing_exit in &dest_junc.outgoing {
+                let outgoing_link = self.get_link(outgoing_exit.link_id);
+                self.routing.borrow_mut().hops.insert(Hop::from(junc.id,
+                LogicalAddress::new(Identifier::new(outgoing_link.id, 0, 0, 0), Mask::new(true, false, false, false)),
+                LogicalAddress::new(Identifier::new(link.id, 0, 0, 0), Mask::new(true, false, false, false)),
+                exit
+                ));
+                println!("Add route: {} {} {} {}", junc.id, outgoing_exit.link_id, link.id, exit);
+            }
         };
         self.depth_first_traversal(&print_step, |junc:&Junction| println!("{}", junc.id));
     }
