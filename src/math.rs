@@ -1,6 +1,7 @@
 use std::cell::{RefCell};
 use std::collections::HashSet;
 use rusqlite::{Connection, Result, Error, Row};
+use rusqlite::fallible_iterator::FallibleIterator;
 
 pub enum ParsingState {
     Initial,
@@ -325,10 +326,16 @@ impl Tile {
     }
 
 }
+
+pub struct Exit {
+    link_id: u16,
+    exit: u32
+}
+
 pub struct Junction {
     id:u32,
-    incoming : Vec<u16>,
-    outgoing : Vec<u16>
+    incoming : Vec<Exit>,
+    outgoing : Vec<Exit>
 }
 
 impl Junction {
@@ -342,10 +349,10 @@ impl Junction {
 
     fn build_routes(&self, network:& Network, routing:&mut Routing) -> () {
         // Build immediately accessible hops
-        for link in &self.outgoing {
+        for exit in &self.outgoing {
             routing.hops.insert(Hop::from(self.id,
-                                        LogicalAddress::new(Identifier::new(*link, 0, 0, 0), Mask::new(true,false,false,false)),
-                                        LogicalAddress::new(Identifier::new(*link, 0, 0,0), Mask::new(true,false,false,false)), 90));
+                                        LogicalAddress::new(Identifier::new(exit.link_id, 0, 0, 0), Mask::new(true,false,false,false)),
+                                        LogicalAddress::new(Identifier::new(exit.link_id, 0, 0,0), Mask::new(true,false,false,false)), exit.exit));
             // if let Some(destination) = network.get_link(*link).destination {
             //     let destination = network.get_junc(destination);
             //     routing.hops.push(Hop::from(destination.id,
@@ -353,10 +360,10 @@ impl Junction {
             //                             LogicalAddress::new(Identifier::new(*link, 0, 0, 0), Mask::new(true,false,false,false)), 270));
             // }
         }
-        for link in &self.incoming {
+        for exit in &self.incoming {
             routing.hops.insert(Hop::from(self.id,
-                                        LogicalAddress::new(Identifier::new(*link, 0, 0, 0), Mask::new(true,false,false,false)),
-                                        LogicalAddress::new(Identifier::new(*link, 0, 0,0), Mask::new(true,false,false,false)), 270));
+                                        LogicalAddress::new(Identifier::new(exit.link_id, 0, 0, 0), Mask::new(true,false,false,false)),
+                                        LogicalAddress::new(Identifier::new(exit.link_id, 0, 0,0), Mask::new(true,false,false,false)), exit.exit));
         }
 
         let mut reciprocals: HashSet<Hop> = HashSet::new();
@@ -380,14 +387,14 @@ impl Junction {
                 if let Some(origin) = link.origin {
                     let mut found = false;
                     for hop2 in &routing.hops {
-                        if hop2.junction == origin && hop2.destination.id.link == *outgoing {
+                        if hop2.junction == origin && hop2.destination.id.link == outgoing.link_id {
                             found = true;
                         }
                     }
                     if !found {
                         reciprocals.insert(Hop::from(origin,
-                                                     LogicalAddress::new(Identifier::new(*outgoing, 0, 0, 0), Mask::new(true, false, false, false)),
-                                                     hop.destination, 90));
+                                                     LogicalAddress::new(Identifier::new(outgoing.link_id, 0, 0, 0), Mask::new(true, false, false, false)),
+                                                     hop.destination, outgoing.exit));
                     }
                 }
             }
@@ -407,15 +414,15 @@ impl Junction {
         self.outgoing.len()
     }
 
-    pub fn add_outgoing(&mut self, id:u16) {
-        self.outgoing.push(id);
+    pub fn add_outgoing(&mut self, id:u16, exit_id:u32) {
+        self.outgoing.push(Exit{link_id:id,exit:exit_id});
     }
     pub fn num_incoming(&self) -> usize {
         self.incoming.len()
     }
 
-    pub fn add_incoming(&mut self, id:u16) {
-        self.incoming.push(id);
+    pub fn add_incoming(&mut self, id:u16, exit_id:u32) {
+        self.incoming.push(Exit{link_id:id,exit:exit_id});
     }
 }
 pub struct Link {
@@ -483,6 +490,9 @@ pub struct Network {
     routing: RefCell<Routing>
 }
 
+type JuncFunc = fn(&Junction) -> ();
+
+
 impl<'a> Network {
     pub fn new(links:Vec<Box<Link>>, junctions:Vec<Box<Junction>>) -> Network {
         Network {
@@ -502,15 +512,15 @@ impl<'a> Network {
         let mut network = Network::empty();
         network.set_links(link_gw.find_all().unwrap_or(Vec::new()));
         network.set_junctions(junc_gw.find_all().unwrap_or(Vec::new()));
-        network.set_junction_connections(&mut junc_gw.find_connections().unwrap_or(Vec::<(u32,u16,bool)>::new()));
+        network.set_junction_connections(&mut junc_gw.find_connections().unwrap_or(Vec::<(u32,u16,bool,u32)>::new()));
         network.set_tiles(tile_gw.find_all().unwrap_or(Vec::new()));
         network.set_segments(seg_gw.find_all().unwrap_or(Vec::new()));
         network.build_routes();
         network
     }
 
-    fn dummy(&self, _:&Link) -> () {
-
+    fn dummy(&self, junc:&Junction, link:&Link, exit:u32, dest_junc:u32) -> () {
+        println!("{} {} {} {}", junc.id, link.id, exit, dest_junc);
     }
 
     fn build_routes_for_junction(&self, _:&Junction) -> () {
@@ -520,47 +530,57 @@ impl<'a> Network {
         for junc in &self.junctions {
             junc.build_routes(self, &mut self.routing.borrow_mut());
         }
-        self.depth_first_traversal(&Self::dummy, &Self::build_routes_for_junction);
+        let printStep = |junc:&Junction, link:&Link, exit:u32, dest_junc:u32| {
+            self.routing.borrow_mut().hops.insert(Hop::from(junc.id,
+                                                            LogicalAddress::new(Identifier::new(link.id, 0, 0, 0), Mask::new(true, false, false, false)),
+                                                            LogicalAddress::new(Identifier::new(link.id, 0, 0, 0), Mask::new(true, false, false, false)),
+                                                            exit
+            )
+            );
+            println!("{} {} {} {}", junc.id, link.id, exit, dest_junc);
+        };
+            self.depth_first_traversal(&printStep, |junc:&Junction| println!("{}", junc.id));
+
     }
 
-    fn depth_first_traversal_helper<LinkFunc, JuncFUnc>(&self, junc:&Junction, visited:&mut HashSet<u32>, link_func:&LinkFunc, junc_func:&JuncFUnc) -> ()
-    where LinkFunc : Fn(&Self, &Link),
-        JuncFUnc : Fn(&Self, &Junction),
+    fn depth_first_traversal_helper<LinkFunc>(& self, junc:&Junction, visited:&mut HashSet<u32>, path: &mut Vec<u32>, link_func:&LinkFunc, junc_func:&JuncFunc) -> ()
+    where LinkFunc : Fn(&Junction, &Link, u32, u32)
     {
         if !visited.contains(&junc.id) {
             visited.insert(junc.id);
-            junc_func(self, junc);
-            for link in &junc.incoming {
-                //                    let link = self.get_link_mut(*link);
-                let link = self.get_link(*link);
-                link_func(self, link);
+            path.push(junc.id);
+            junc_func(junc);
+            for exit in &junc.incoming {
+                let link = self.get_link(exit.link_id);
                 if let Some(origin) = link.origin {
+                    link_func(junc, link, 270, origin);
                     if !visited.contains(&origin) {
-                        self.depth_first_traversal_helper(self.get_junc(origin), visited, link_func, junc_func);
+                        self.depth_first_traversal_helper(self.get_junc(origin), visited, path, link_func, junc_func);
                     }
                 }
             }
 
-            for link in &junc.outgoing {
-                let link = self.get_link(*link);
-                link_func(self, link);
+            for exit in &junc.outgoing {
+                let link = self.get_link(exit.link_id);
                 if let Some(destination) = link.destination {
+                    link_func(junc, link, 90, destination);
                     if !visited.contains(&destination) {
-                        self.depth_first_traversal_helper(self.get_junc(destination), visited, link_func, junc_func);
+                        self.depth_first_traversal_helper(self.get_junc(destination), visited, path, link_func, junc_func);
                     }
                 }
             }
+            path.pop();
         }
     }
 
-    pub fn depth_first_traversal<LinkFunc, JuncFunc>(&self, link_func:&LinkFunc, junc_func:&JuncFunc) -> ()
-    where LinkFunc: Fn(&Self, &Link),
-    JuncFunc: Fn(&Self, &Junction)-> ()
+    pub fn depth_first_traversal<LinkFunc>(&self, link_func:&LinkFunc, junc_func:JuncFunc) -> ()
+    where LinkFunc: Fn(&Junction, &Link, u32, u32)
     {
         let mut visited: HashSet<u32> = HashSet::new();
+        let mut path:Vec<u32> = Vec::new();
         if !self.junctions.is_empty() {
             let junc = &self.junctions[0];
-            self.depth_first_traversal_helper(junc, &mut visited, link_func, junc_func);
+            self.depth_first_traversal_helper(self.get_junc(1), &mut visited, &mut path, link_func, &junc_func);
         }
     }
 
@@ -615,13 +635,13 @@ impl<'a> Network {
     pub fn set_tiles(&mut self, tiles:Vec<Box<Tile>>) {
         self.tiles = tiles;
     }
-    pub fn set_junction_connections(&mut self, connections: &mut Vec<(u32, u16, bool)>) {
+    pub fn set_junction_connections(&mut self, connections: &mut Vec<(u32, u16, bool, u32)>) {
         for connection in connections {
             if connection.2 {
-                self.get_junc_mut(connection.0).add_outgoing(connection.1);
+                self.get_junc_mut(connection.0).add_outgoing(connection.1, connection.3);
             }
             else {
-                self.get_junc_mut(connection.0).add_incoming(connection.1);
+                self.get_junc_mut(connection.0).add_incoming(connection.1, connection.3);
             }
         }
     }
@@ -693,7 +713,7 @@ impl<'a> NetworkBuilder {
         self.links.push(Box::new(Link::new(self.next_link)));
         self.next_link+=1;
         if let Some(j) = self.junctions.last_mut() {
-            j.outgoing.push(self.links.last().unwrap().id)
+            j.outgoing.push(Exit{link_id:self.links.last().unwrap().id,exit:90});
         }
     }
 
@@ -766,14 +786,14 @@ impl<'a> JunctionGateway<'a> {
         Ok(juncs)
     }
 
-    pub fn find_connections(&self) -> Result<Vec<(u32,u16,bool)>> {
+    pub fn find_connections(&self) -> Result<Vec<(u32,u16,bool,u32)>, Error> {
         let mut statement = self.connection.prepare("SELECT * FROM junctions_links;");
         if let  Err(e) = statement {
             return Err(e);
         }
         let mut statement = statement.unwrap();
         let connection_iter = statement.query_map([], |row| {
-            Ok((row.get::<usize, u32>(0).unwrap() as u32, row.get::<usize,u16>(1).unwrap(), row.get::<usize,bool>(2).unwrap()))
+            Ok((row.get::<usize, u32>(0).unwrap() as u32, row.get::<usize,u16>(1).unwrap(), row.get::<usize,bool>(2).unwrap(), row.get::<usize,u32>(3).unwrap()))
         });
         let mut connections = Vec::new();
         for connection in connection_iter.unwrap() {
@@ -951,8 +971,8 @@ mod tests {
     }
 
     #[rstest]
-    #[case("data/tests/LoadFromDB/onelink.db", 1, 1, 1, true, true, 1, 90)]
-    // #[case("data/tests/LoadFromDB/twolinks.db", 1, 1, 2, true, true, 1, 90)]
+    // #[case("data/tests/LoadFromDB/onelink.db", 1, 1, 1, true, true, 1, 90)]
+    #[case("data/tests/LoadFromDB/twolinks.db", 1, 1, 2, true, true, 1, 90)]
     // #[case("data/tests/LoadFromDB/twolinks.db", 1, 1, 3, true, true, 2, 90)]
     fn test_routing(#[case] dbfile:&str, #[case] junc_id:u32, #[case] source_link:u16, #[case] dest_link: u16, #[case] to_dest:bool, #[case] exists:bool, #[case] next_hop:u16, #[case] next_exit:u32) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
