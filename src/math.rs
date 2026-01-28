@@ -522,11 +522,12 @@ impl<'a> Network {
     fn build_routes_for_junction(&self, _:&Junction) -> () {
 
     }
+
     fn build_routes(&mut self) {
         for junc in &self.junctions {
             junc.build_routes(self, &mut self.routing.borrow_mut());
         }
-        let print_step = |junc:&Junction, link:&Link, exit:u32, dest_junc:u32| {
+        let print_step = |junc:&Junction, link:&Link, exit:u32, dest_junc:u32, path:&Vec<u32>| {
             self.routing.borrow_mut().hops.insert(Hop::from(junc.id,
                                                             LogicalAddress::new(Identifier::new(link.id, 0, 0, 0), Mask::new(true, false, false, false)),
                                                             LogicalAddress::new(Identifier::new(link.id, 0, 0, 0), Mask::new(true, false, false, false)),
@@ -535,12 +536,11 @@ impl<'a> Network {
             );
             println!("{} {} {} {}", junc.id, link.id, exit, dest_junc);
         };
-            self.depth_first_traversal(&print_step, |junc:&Junction| println!("{}", junc.id));
-
+        self.depth_first_traversal(&print_step, |junc:&Junction| println!("{}", junc.id));
     }
 
     fn depth_first_traversal_helper<LinkFunc, JuncFunc>(& self, junc:&Junction, visited:&mut HashSet<u32>, path: &mut Vec<u32>, link_func:&LinkFunc, junc_func:&JuncFunc) -> ()
-    where LinkFunc : Fn(&Junction, &Link, u32, u32),
+    where LinkFunc : Fn(&Junction, &Link, u32, u32, &Vec<u32>),
         JuncFunc: Fn(&Junction)
     {
         if !visited.contains(&junc.id) {
@@ -549,8 +549,9 @@ impl<'a> Network {
             junc_func(junc);
             for exit in &junc.incoming {
                 let link = self.get_link(exit.link_id);
-                if let Some(origin) = link.origin {
-                    link_func(junc, link, 270, origin);
+                let dest_junc = link.destination;
+                if let Some(origin) = link.origin && dest_junc.is_some() {
+                    link_func(junc, link, 270, origin, path);
                     if !visited.contains(&origin) {
                         self.depth_first_traversal_helper(self.get_junc(origin), visited, path, link_func, junc_func);
                     }
@@ -560,7 +561,7 @@ impl<'a> Network {
             for exit in &junc.outgoing {
                 let link = self.get_link(exit.link_id);
                 if let Some(destination) = link.destination {
-                    link_func(junc, link, 90, destination);
+                    link_func(junc, link, 90, destination, path);
                     if !visited.contains(&destination) {
                         self.depth_first_traversal_helper(self.get_junc(destination), visited, path, link_func, junc_func);
                     }
@@ -571,7 +572,7 @@ impl<'a> Network {
     }
 
     pub fn depth_first_traversal<LinkFunc, JuncFunc>(&self, link_func:&LinkFunc, junc_func:JuncFunc) -> ()
-    where LinkFunc: Fn(&Junction, &Link, u32, u32),
+    where LinkFunc: Fn(&Junction, &Link, u32, u32, &Vec<u32>),
         JuncFunc: Fn(&Junction)
     {
         let mut visited: HashSet<u32> = HashSet::new();
