@@ -543,14 +543,19 @@ impl<'a> Network {
                 let last_junc = self.get_junc(last_junc.0);
 
                 if last_junc.outgoing.is_empty() {
+
                     // Iterate over path, adding routes
                     for i in 0..path.len() {
+                        println!("path: junc {} exit {}", path[i].0, path[i].1);
                         let src_junc = self.get_junc(path[i].0);
                         for j in i+1..path.len() {
                             let dest_junc = self.get_junc(path[j].0);
-                            println!("origin_junc: {} dest_junc: {} exit {}", src_junc.id, dest_junc.id, exit);
-                            println!("Add route {} {} {}", src_junc.id, dest_junc.id, path[i].1);
-                            self.routing.borrow_mut().hops.insert(Hop::from(src_junc.id, dest_junc.id, path[i].1));
+                            if path[i].0 != path[j].0 && path[i].1 != 270 {
+                                //println!("origin_junc: {} dest_junc: {} exit {}", src_junc.id, dest_junc.id, path[i].1);
+
+                                println!("Add route from {} to {} via {} exit {}", src_junc.id, dest_junc.id, path[i].0, path[i].1);
+                                self.routing.borrow_mut().hops.insert(Hop::from(src_junc.id, dest_junc.id, path[i].1));
+                            }
                         }
                     }
                 }
@@ -567,13 +572,15 @@ impl<'a> Network {
             visited.insert(junc.id);
             for exit in &junc.incoming {
                 let link = self.get_link(exit.link_id);
-                path.push((junc.id,exit.exit));
                 junc_func(junc);
                 let dest_junc = link.destination;
                 if let Some(origin) = link.origin && dest_junc.is_some() {
-                    link_func(junc, link, 270, origin, path);
-                    if !visited.contains(&origin) {
-                        self.depth_first_traversal_helper(self.get_junc(origin), visited, path, link_func, junc_func);
+                    path.push((dest_junc.unwrap(),exit.exit));
+                    let destination = self.get_junc(dest_junc.unwrap());
+                    let origin = self.get_junc(origin);
+                    link_func(destination, link, exit.exit, origin.id, path);
+                    if !visited.contains(&origin.id) {
+                        self.depth_first_traversal_helper(origin, visited, path, link_func, junc_func);
                     }
                 }
             }
@@ -582,7 +589,7 @@ impl<'a> Network {
                 let link = self.get_link(exit.link_id);
                 if let Some(destination) = link.destination {
                     path.push((junc.id,exit.exit));
-                    link_func(junc, link, 90, destination, path);
+                    link_func(junc, link, exit.exit, destination, path);
                     if !visited.contains(&destination) {
                         self.depth_first_traversal_helper(self.get_junc(destination), visited, path, link_func, junc_func);
                     }
@@ -993,6 +1000,7 @@ mod tests {
     #[rstest]
     // #[case("data/tests/LoadFromDB/onelink.db", 1, 1, 1, true, true, 1, 90)]
     #[case("data/tests/LoadFromDB/twolinks.db", 1, 1, 2, true, true, 90)]
+    #[case("data/tests/LoadFromDB/twolinks.db", 1, 1, 3, true, true, 90)]
     fn test_routing(#[case] dbfile:&str, #[case] junc_id:u32, #[case] source_junc:u32, #[case] dest_junc: u32, #[case] to_dest:bool, #[case] exists:bool, #[case] next_exit:u32) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let network = Network::from(&connection);
