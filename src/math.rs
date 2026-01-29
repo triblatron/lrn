@@ -338,7 +338,7 @@ pub struct Junction {
 }
 
 impl Junction {
-    pub(crate) fn reciprocal(entry: u32) -> u32 {
+    pub fn reciprocal(entry: u32) -> u32 {
         let mut value = entry + 180;
 
         while value>=360 {
@@ -346,9 +346,18 @@ impl Junction {
         }
         return value;
     }
-}
 
-impl Junction {
+    pub fn normalise_exit(input: i32) -> u32 {
+        let mut value = input;
+        while value<0 {
+            value += 360;
+        }
+        while value >= 360 {
+            value -= 360;
+        }
+        value as u32
+    }
+
     pub fn new(id:u32) -> Junction {
         Junction {
             id,
@@ -1034,5 +1043,17 @@ mod tests {
     #[case(360+45, 45+180)]
     fn test_reciprocal_exit(#[case] entry:u32, #[case] reciprocal: u32) {
         assert_eq!(reciprocal, Junction::reciprocal(entry))
+    }
+
+    #[rstest]
+    #[case(0, 0)]
+    #[case(-1, 359)]
+    #[case(720, 0)]
+    #[case(-720, 0)]
+    #[case(90, 90)]
+    #[case(0, 0)]
+    #[case(-45, 360-45)]
+    fn test_normalise_exit(#[case] input:i32, #[case] normalised:u32) {
+        assert_eq!(normalised, Junction::normalise_exit(input));
     }
 }
