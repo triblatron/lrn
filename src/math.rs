@@ -366,54 +366,54 @@ impl Junction {
         }
     }
 
-    fn build_routes(&self, network:& Network, routing:&mut Routing) -> () {
-        // Build immediately accessible hops
-        // for exit in &self.outgoing {
-        //     routing.hops.insert(Hop::from(self.id,
-        //                                 LogicalAddress::new(Identifier::new(exit.link_id, 0, 0, 0), Mask::new(true,false,false,false)),
-        //                                 LogicalAddress::new(Identifier::new(exit.link_id, 0, 0,0), Mask::new(true,false,false,false)), exit.exit));
-        // }
-        // for exit in &self.incoming {
-        //     routing.hops.insert(Hop::from(self.id,
-        //                                 LogicalAddress::new(Identifier::new(exit.link_id, 0, 0, 0), Mask::new(true,false,false,false)),
-        //                                 LogicalAddress::new(Identifier::new(exit.link_id, 0, 0,0), Mask::new(true,false,false,false)), exit.exit));
-        // }
-        //
-        // let mut reciprocals: HashSet<Hop> = HashSet::new();
-        // for hop in &routing.hops {
-        //     // Look at the incoming links and add a hop for the destination
-        //     // if let Some(origin) = network.get_link(hop.destination.id.link).origin {
-        //     //     // Add a reciprocal route
-        //     //     for incoming in &network.get_junc(origin).incoming {
-        //     //         reciprocals.insert(Hop::from(origin,
-        //     //                                    LogicalAddress::new(Identifier::new(hop.destination.id.link, 0, 0, 0), Mask::new(true,false,false,false)),
-        //     //                                    LogicalAddress::new(Identifier::new(*incoming, 0, 0, 0), Mask::new(true, false, false, false)), 90));
-        //     //
-        //     //     }
-        //     //     // for outgoing in &network.get_junc(origin).outgoing {
-        //     //     //     reciprocals.insert(Hop::from(origin,
-        //     //     //                                 LogicalAddress::new(Identifier::new())))
-        //     //     // }
-        //     // }
-        //     for outgoing in &network.get_junc(hop.junction).outgoing {
-        //         let link = network.get_link(hop.destination.id.link);
-        //         if let Some(origin) = link.origin {
-        //             let mut found = false;
-        //             for hop2 in &routing.hops {
-        //                 if hop2.junction == origin && hop2.destination.id.link == outgoing.link_id {
-        //                     found = true;
-        //                 }
-        //             }
-        //             if !found {
-        //                 reciprocals.insert(Hop::from(origin,
-        //                                              LogicalAddress::new(Identifier::new(outgoing.link_id, 0, 0, 0), Mask::new(true, false, false, false)),
-        //                                              hop.destination, outgoing.exit));
-        //             }
-        //         }
-        //     }
-        // }
-        // routing.hops = &routing.hops|&reciprocals;
-    }
+    // fn build_routes(&self, network:& Network, routing:&mut Routing) -> () {
+    //     // Build immediately accessible hops
+    //     // for exit in &self.outgoing {
+    //     //     routing.hops.insert(Hop::from(self.id,
+    //     //                                 LogicalAddress::new(Identifier::new(exit.link_id, 0, 0, 0), Mask::new(true,false,false,false)),
+    //     //                                 LogicalAddress::new(Identifier::new(exit.link_id, 0, 0,0), Mask::new(true,false,false,false)), exit.exit));
+    //     // }
+    //     // for exit in &self.incoming {
+    //     //     routing.hops.insert(Hop::from(self.id,
+    //     //                                 LogicalAddress::new(Identifier::new(exit.link_id, 0, 0, 0), Mask::new(true,false,false,false)),
+    //     //                                 LogicalAddress::new(Identifier::new(exit.link_id, 0, 0,0), Mask::new(true,false,false,false)), exit.exit));
+    //     // }
+    //     //
+    //     // let mut reciprocals: HashSet<Hop> = HashSet::new();
+    //     // for hop in &routing.hops {
+    //     //     // Look at the incoming links and add a hop for the destination
+    //     //     // if let Some(origin) = network.get_link(hop.destination.id.link).origin {
+    //     //     //     // Add a reciprocal route
+    //     //     //     for incoming in &network.get_junc(origin).incoming {
+    //     //     //         reciprocals.insert(Hop::from(origin,
+    //     //     //                                    LogicalAddress::new(Identifier::new(hop.destination.id.link, 0, 0, 0), Mask::new(true,false,false,false)),
+    //     //     //                                    LogicalAddress::new(Identifier::new(*incoming, 0, 0, 0), Mask::new(true, false, false, false)), 90));
+    //     //     //
+    //     //     //     }
+    //     //     //     // for outgoing in &network.get_junc(origin).outgoing {
+    //     //     //     //     reciprocals.insert(Hop::from(origin,
+    //     //     //     //                                 LogicalAddress::new(Identifier::new())))
+    //     //     //     // }
+    //     //     // }
+    //     //     for outgoing in &network.get_junc(hop.junction).outgoing {
+    //     //         let link = network.get_link(hop.destination.id.link);
+    //     //         if let Some(origin) = link.origin {
+    //     //             let mut found = false;
+    //     //             for hop2 in &routing.hops {
+    //     //                 if hop2.junction == origin && hop2.destination.id.link == outgoing.link_id {
+    //     //                     found = true;
+    //     //                 }
+    //     //             }
+    //     //             if !found {
+    //     //                 reciprocals.insert(Hop::from(origin,
+    //     //                                              LogicalAddress::new(Identifier::new(outgoing.link_id, 0, 0, 0), Mask::new(true, false, false, false)),
+    //     //                                              hop.destination, outgoing.exit));
+    //     //             }
+    //     //         }
+    //     //     }
+    //     // }
+    //     // routing.hops = &routing.hops|&reciprocals;
+    // }
 
     fn from_query(id:u32) -> Junction {
         Junction {
@@ -538,9 +538,9 @@ impl<'a> Network {
     }
 
     fn build_routes(&mut self) {
-        for junc in &self.junctions {
-            junc.build_routes(self, &mut self.routing.borrow_mut());
-        }
+        // for junc in &self.junctions {
+        //     junc.build_routes(self, &mut self.routing.borrow_mut());
+        // }
         let print_step = |junc:&Junction, link:&Link, exit:u32, dest_junc:u32, path:&Vec<(u32,u32)>| {
             // self.routing.borrow_mut().hops.insert(Hop::from(junc.id,
             //                                                 LogicalAddress::new(Identifier::new(link.id, 0, 0, 0), Mask::new(true, false, false, false)),
