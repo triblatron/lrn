@@ -464,6 +464,169 @@ impl<'a> Link {
         }
     }
 }
+
+#[derive(PartialEq, Debug)]
+pub enum TurnDirection {
+    LEFT,
+    RIGHT,
+    STRAIGHT
+}
+
+#[derive(PartialEq, Debug)]
+pub enum CompassDirection {
+    N,
+    NE,
+    E,
+    SE,
+    S,
+    SW,
+    W,
+    NW
+}
+
+#[derive(PartialEq, Debug)]
+pub enum Turn {
+    Relative(TurnDirection),
+    Compass(CompassDirection),
+    Exit(u8),
+    Heading(u32)
+}
+
+use std::str::FromStr;
+
+impl FromStr for Turn {
+    type Err = String;  // or use a custom error type
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Relative" => Ok(Turn::Relative(TurnDirection::STRAIGHT)),
+            "Compass" => Ok(Turn::Compass(CompassDirection::N)),
+            "Exit" => Ok(Turn::Exit(1)),
+            _ => Err(format!("Unknown Turn: {}", s)),
+        }
+    }
+}
+#[derive(PartialEq, Debug)]
+pub enum TurnMultiplicity {
+    Once,
+    Count(u32),
+    Always
+}
+
+#[derive(PartialEq, Debug)]
+pub struct TurningPattern {
+    turn:Turn,
+    count:TurnMultiplicity
+}
+
+#[derive(PartialEq, Debug)]
+pub struct Route {
+    start_link:u16,
+    offset:f64,
+    distance:f64,
+    patterns:Vec<TurningPattern>
+}
+
+#[derive(Copy, Clone)]
+pub enum RouteParsing {
+    Initial,
+    FoundSpace,
+    FoundStartLink,
+//    FoundSpaceAfterStartLink,
+    FoundOffset,
+//    FoundSpaceAfterOffset,
+    FoundDistance,
+    FoundPatterns
+//    FoundSpaceAfterDistance
+}
+impl Route {
+    pub fn empty() -> Route {
+        Route {
+            start_link:0,
+            offset:0.0,
+            distance:0.0,
+            patterns:vec![]
+        }
+    }
+    pub fn parse(input:&str) -> Route {
+        let start_of_offset = 0;
+        let mut start = 0;
+        let mut end = 0;
+        let input = input.trim_start();
+        let mut state = RouteParsing::Initial;
+        let mut retval : Route = Route::empty();
+        let mut next_state : RouteParsing = RouteParsing::Initial;
+        for c in input.chars() {
+            match state {
+                RouteParsing::Initial => {
+                    if !c.is_whitespace() {
+                        end += 1;
+                    }
+                    else {
+                        retval.start_link = input[0..end].parse::<u16>().unwrap_or(0);
+                        start = end+1;
+                        end = start;
+                        state = RouteParsing::FoundSpace;
+                        next_state = RouteParsing::FoundStartLink;
+                    }
+                }
+                RouteParsing::FoundSpace => {
+                    if c.is_whitespace() {
+                        start += 1;
+                    }
+                    else {
+                        state = next_state;
+                        end = start;
+                    }
+                }
+                RouteParsing::FoundStartLink => {
+                    if !c.is_whitespace() {
+                        end+=1;
+                    }
+                    else {
+                        retval.offset = input[start..=end].trim_start().parse::<f64>().unwrap_or(0.0);
+                        start = end+1;
+                        end = start;
+                        state = RouteParsing::FoundSpace;
+                        next_state = RouteParsing::FoundOffset;
+                    }
+                }
+                RouteParsing::FoundOffset => {
+                    if !c.is_whitespace() {
+                        end+=1;
+                    }
+                    else {
+                        retval.distance = input[start..=end].trim_start().parse::<f64>().unwrap_or(0.0);
+                        start = end;
+                        state = RouteParsing::FoundSpace;
+                        next_state = RouteParsing::FoundDistance;
+                    }
+                }
+                RouteParsing::FoundDistance => {
+                    if !c.is_whitespace() {
+                        end+=1;
+                    }
+                    else {
+                        retval.distance = input[start..=end].trim_start().parse::<f64>().unwrap_or(0.0);
+                        start = end+1;
+                        state = RouteParsing::FoundSpace;
+                        next_state = RouteParsing::FoundPatterns;
+                    }
+                }
+                RouteParsing::FoundPatterns => {
+                    if !c.is_whitespace() {
+                        end+=1;
+                    }
+                    else {
+                        let turn = Turn::Relative(TurnDirection::STRAIGHT);// input[start..=end].trim_start().parse::<TurningPattern>();
+                        retval.patterns.push(TurningPattern { turn:turn, count: TurnMultiplicity::Once });
+                    }
+                }
+            }
+        }
+        retval
+    }
+}
 #[derive(Copy, Clone)]
 #[derive(Eq, Hash, PartialEq)]
 pub struct Hop {
@@ -1055,5 +1218,12 @@ mod tests {
     #[case(-45, 360-45)]
     fn test_normalise_exit(#[case] input:i32, #[case] normalised:u32) {
         assert_eq!(normalised, Junction::normalise_exit(input));
+    }
+
+    #[rstest]
+    #[case("1 -1.825 200.0 STRAIGHT", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    fn test_parse_route(#[case] input: &str, #[case] route:Route) {
+        let actual = Route::parse(input);
+        assert_eq!(route, actual);
     }
 }
