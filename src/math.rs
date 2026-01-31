@@ -476,14 +476,14 @@ pub enum TurnDirection {
 
 #[derive(PartialEq, Debug)]
 pub enum CompassDirection {
-    N,
-    NE,
-    E,
-    SE,
-    S,
-    SW,
-    W,
-    NW
+    North,
+    NorthEast,
+    East,
+    SouthEast,
+    South,
+    SouthWest,
+    West,
+    NorthWest
 }
 
 #[derive(PartialEq, Debug)]
@@ -532,14 +532,14 @@ impl FromStr for CompassDirection {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "N" => Ok(CompassDirection::N),
-            "NE" => Ok(CompassDirection::NE),
-            "E" => Ok(CompassDirection::E),
-            "SE" => Ok(CompassDirection::SE),
-            "S" => Ok(CompassDirection::S),
-            "SW" => Ok(CompassDirection::SW),
-            "W" => Ok(CompassDirection::W),
-            "NW" => Ok(CompassDirection::NW),
+            "N" => Ok(CompassDirection::North),
+            "NE" => Ok(CompassDirection::NorthEast),
+            "E" => Ok(CompassDirection::East),
+            "SE" => Ok(CompassDirection::SouthEast),
+            "S" => Ok(CompassDirection::South),
+            "SW" => Ok(CompassDirection::SouthWest),
+            "W" => Ok(CompassDirection::West),
+            "NW" => Ok(CompassDirection::NorthWest),
             _ => Err(format!("invalid compass direction: {}", s))
         }
     }
@@ -1317,7 +1317,7 @@ mod tests {
     #[case("1 -1.825 200.0", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
     #[case(" 1  -1.825  200.0", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
     #[case("1 -1.825 200.0 Relative:Straight Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
-    #[case("1 -1.825 200.0 Relative:Straight Count:1 Compass:N Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Compass(CompassDirection::N), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case("1 -1.825 200.0 Relative:Straight Count:1 Compass:N Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Compass(CompassDirection::North), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
     #[case("1 -1.825 200.0 Relative:Straight Count:1 Exit:2 Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Exit(2), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
     #[case("1 -1.825 200.0 Relative:Straight Count:1 Heading:90 Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Heading(90), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
     #[case("1 -1.825 200.0 Relative:Straight Always", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Always } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
@@ -1329,14 +1329,14 @@ mod tests {
 
     #[rstest]
     #[case("Relative:Straight", Turn::Relative(TurnDirection::Straight))]
-    #[case("Compass:N", Turn::Compass(CompassDirection::N))]
-    #[case("Compass:NE", Turn::Compass(CompassDirection::NE))]
-    #[case("Compass:E", Turn::Compass(CompassDirection::E))]
-    #[case("Compass:SE", Turn::Compass(CompassDirection::SE))]
-    #[case("Compass:S", Turn::Compass(CompassDirection::S))]
-    #[case("Compass:SW", Turn::Compass(CompassDirection::SW))]
-    #[case("Compass:W", Turn::Compass(CompassDirection::W))]
-    #[case("Compass:NW", Turn::Compass(CompassDirection::NW))]
+    #[case("Compass:N", Turn::Compass(CompassDirection::North))]
+    #[case("Compass:NE", Turn::Compass(CompassDirection::NorthEast))]
+    #[case("Compass:E", Turn::Compass(CompassDirection::East))]
+    #[case("Compass:SE", Turn::Compass(CompassDirection::SouthEast))]
+    #[case("Compass:S", Turn::Compass(CompassDirection::South))]
+    #[case("Compass:SW", Turn::Compass(CompassDirection::SouthWest))]
+    #[case("Compass:W", Turn::Compass(CompassDirection::West))]
+    #[case("Compass:NW", Turn::Compass(CompassDirection::NorthWest))]
     fn test_parse_turn(#[case] input: &str, #[case] turn:Turn) {
         let actual = input.parse::<Turn>();
         assert_eq!(turn, actual.unwrap());
@@ -1352,7 +1352,7 @@ mod tests {
 
     #[rstest]
     #[case("Relative:Straight Count:1", TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) } )]
-    #[case("Compass:N Count:1", TurningPattern { turn:Turn::Compass(CompassDirection::N), count:TurnMultiplicity::Count(1) } )]
+    #[case("Compass:N Count:1", TurningPattern { turn:Turn::Compass(CompassDirection::North), count:TurnMultiplicity::Count(1) } )]
     #[case("Exit:1 Count:1", TurningPattern { turn:Turn::Exit(1), count:TurnMultiplicity::Count(1) } )]
     #[case("Heading:90 Count:1", TurningPattern { turn:Turn::Heading(90), count:TurnMultiplicity::Count(1) } )]
     fn test_parse_turning_pattern(#[case] input: &str, #[case] value:TurningPattern) {
