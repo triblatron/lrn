@@ -1226,6 +1226,7 @@ mod tests {
 
     #[rstest]
     #[case("1 -1.825 200.0", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case(" 1  -1.825  200.0", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
     fn test_parse_route(#[case] input: &str, #[case] route:Route) {
         let actual = Route::parse(input);
         assert_eq!(route, actual);
