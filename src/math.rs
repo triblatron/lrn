@@ -496,6 +496,24 @@ pub enum Turn {
 
 use std::str::FromStr;
 
+impl FromStr for TurnMultiplicity {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = s.split(':').collect();
+
+        match parts.as_slice() {
+            ["Count", count] => {
+                let count:u32 = count.parse().unwrap();
+                Ok(TurnMultiplicity::Count(count))
+            }
+            ["Always"] => {
+                Ok(TurnMultiplicity::Always)
+            }
+            _ => Err(format!("invalid turn multiplicity {}", s)),
+        }
+    }
+}
 impl FromStr for TurnDirection {
     type Err = String;
 
@@ -535,7 +553,6 @@ impl FromStr for Turn {
 }
 #[derive(PartialEq, Debug)]
 pub enum TurnMultiplicity {
-    Once,
     Count(u32),
     Always
 }
@@ -642,7 +659,7 @@ impl Route {
                     }
                     else {
                         let turn = Turn::Relative(TurnDirection::Straight);// input[start..=end].trim_start().parse::<TurningPattern>();
-                        retval.patterns.push(TurningPattern { turn:turn, count: TurnMultiplicity::Once });
+                        retval.patterns.push(TurningPattern { turn:turn, count: TurnMultiplicity::Count(1) });
                     }
                 }
             }
@@ -1265,5 +1282,13 @@ mod tests {
     fn test_parse_turn(#[case] input: &str, #[case] turn:Turn) {
         let actual = input.parse::<Turn>();
         assert_eq!(turn, actual.unwrap());
+    }
+
+    #[rstest]
+    #[case("Count:1", TurnMultiplicity::Count(1))]
+    #[case("Always", TurnMultiplicity::Always)]
+    fn test_parse_turn_multiplicity(#[case] input: &str, #[case] value:TurnMultiplicity) {
+        let actual: TurnMultiplicity = input.parse().unwrap();
+        assert_eq!(value, actual);
     }
 }
