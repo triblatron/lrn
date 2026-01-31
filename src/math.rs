@@ -618,7 +618,6 @@ pub enum RouteParsing {
     ParsingSpace,
     ParsingOffset,
     ParsingDistance,
-    ParsingTurn,
     ParsingTurnPattern,
     ParsingFinished
 }
@@ -681,17 +680,6 @@ impl Route {
                         retval.distance = input[start..=end].trim_start().parse::<f64>().unwrap_or(0.0);
                         start = end+2;
                         state = RouteParsing::ParsingSpace;
-                        next_state = RouteParsing::ParsingTurnPattern;
-                    }
-                }
-                RouteParsing::ParsingTurn => {
-                    // Jump over two sets of whitespace
-                    if !c.is_whitespace() {
-                        end+=1;
-                    }
-                    else {
-                        state = RouteParsing::ParsingSpace;
-                        start = end+2;
                         next_state = RouteParsing::ParsingTurnPattern;
                     }
                 }
@@ -1329,6 +1317,10 @@ mod tests {
     #[case("1 -1.825 200.0", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
     #[case(" 1  -1.825  200.0", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
     #[case("1 -1.825 200.0 Relative:Straight Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case("1 -1.825 200.0 Relative:Straight Count:1 Compass:N Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Compass(CompassDirection::N), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case("1 -1.825 200.0 Relative:Straight Count:1 Exit:2 Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Exit(2), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case("1 -1.825 200.0 Relative:Straight Count:1 Heading:90 Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Heading(90), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case("1 -1.825 200.0 Relative:Straight Always", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Always } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
     #[case("1 -1.825 200.0 Relative:Straight Count:1 Relative:Right Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Relative(TurnDirection::Right), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
     fn test_parse_route(#[case] input: &str, #[case] route:Route) {
         let actual = Route::parse(input);
