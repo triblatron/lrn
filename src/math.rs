@@ -467,10 +467,12 @@ impl<'a> Link {
 
 #[derive(PartialEq, Debug)]
 pub enum TurnDirection {
-    LEFT,
-    RIGHT,
-    STRAIGHT
+    Left,
+    Right,
+    Straight,
+    UTurn
 }
+
 
 #[derive(PartialEq, Debug)]
 pub enum CompassDirection {
@@ -494,15 +496,40 @@ pub enum Turn {
 
 use std::str::FromStr;
 
+impl FromStr for TurnDirection {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Left" => Ok(TurnDirection::Left),
+            "Right" => Ok(TurnDirection::Right),
+            "Straight" => Ok(TurnDirection::Straight),
+            "UTurn" => Ok(TurnDirection::UTurn),
+            _ => Err(format!("invalid turn direction: {}", s))
+        }
+    }
+}
+
 impl FromStr for Turn {
     type Err = String;  // or use a custom error type
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Relative" => Ok(Turn::Relative(TurnDirection::STRAIGHT)),
-            "Compass" => Ok(Turn::Compass(CompassDirection::N)),
-            "Exit" => Ok(Turn::Exit(1)),
-            _ => Err(format!("Unknown Turn: {}", s)),
+        let parts: Vec<&str> = s.split(':').collect();
+
+        match parts.as_slice() {
+            [which, direction] => {
+
+                match which {
+                    &"Relative" => {
+                        let dir = direction.parse().unwrap();
+                        Ok(Turn::Relative(dir))
+                    }
+                    _ => {
+                        Err("Invalid turn".to_string())
+                    }
+                }
+            }
+            _ => Err("Invalid Turn format".to_string()),
         }
     }
 }
@@ -614,7 +641,7 @@ impl Route {
                         end+=1;
                     }
                     else {
-                        let turn = Turn::Relative(TurnDirection::STRAIGHT);// input[start..=end].trim_start().parse::<TurningPattern>();
+                        let turn = Turn::Relative(TurnDirection::Straight);// input[start..=end].trim_start().parse::<TurningPattern>();
                         retval.patterns.push(TurningPattern { turn:turn, count: TurnMultiplicity::Once });
                     }
                 }
@@ -1227,8 +1254,16 @@ mod tests {
     #[rstest]
     #[case("1 -1.825 200.0", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
     #[case(" 1  -1.825  200.0", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case("1 -1.825 200.0 Straight", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
     fn test_parse_route(#[case] input: &str, #[case] route:Route) {
         let actual = Route::parse(input);
         assert_eq!(route, actual);
+    }
+
+    #[rstest]
+    #[case("Relative:Straight", Turn::Relative(TurnDirection::Straight))]
+    fn test_parse_turn(#[case] input: &str, #[case] turn:Turn) {
+        let actual = input.parse::<Turn>();
+        assert_eq!(turn, actual.unwrap());
     }
 }
