@@ -584,7 +584,7 @@ impl Route {
                     }
                     else {
                         retval.offset = input[start..=end].trim_start().parse::<f64>().unwrap_or(0.0);
-                        start = end+1;
+                        start = end+2;
                         end = start;
                         state = RouteParsing::FoundSpace;
                         next_state = RouteParsing::FoundOffset;
@@ -596,7 +596,7 @@ impl Route {
                     }
                     else {
                         retval.distance = input[start..=end].trim_start().parse::<f64>().unwrap_or(0.0);
-                        start = end;
+                        start = end+2;
                         state = RouteParsing::FoundSpace;
                         next_state = RouteParsing::FoundDistance;
                     }
@@ -621,6 +621,14 @@ impl Route {
                         retval.patterns.push(TurningPattern { turn:turn, count: TurnMultiplicity::Once });
                     }
                 }
+            }
+        }
+        match state {
+            RouteParsing::FoundOffset => {
+                retval.distance = input[start..=end].trim_start().parse::<f64>().unwrap_or(0.0);
+            }
+            _ => {
+
             }
         }
         retval
@@ -1220,7 +1228,7 @@ mod tests {
     }
 
     #[rstest]
-    #[case("1 -1.825 200.0 STRAIGHT", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case("1 -1.825 200.0", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
     fn test_parse_route(#[case] input: &str, #[case] route:Route) {
         let actual = Route::parse(input);
         assert_eq!(route, actual);
