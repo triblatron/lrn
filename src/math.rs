@@ -529,15 +529,12 @@ pub struct Route {
 
 #[derive(Copy, Clone)]
 pub enum RouteParsing {
-    Initial,
+    ParsingStartLink,
     FoundSpace,
-    FoundStartLink,
-//    FoundSpaceAfterStartLink,
-    FoundOffset,
-//    FoundSpaceAfterOffset,
-    FoundDistance,
+    ParsingOffset,
+    ParsingDistance,
+    ParsingPatterns,
     FoundPatterns
-//    FoundSpaceAfterDistance
 }
 impl Route {
     pub fn empty() -> Route {
@@ -552,12 +549,12 @@ impl Route {
         let mut start = 0;
         let mut end = 0;
         let input = input.trim_start();
-        let mut state = RouteParsing::Initial;
+        let mut state = RouteParsing::ParsingStartLink;
         let mut retval : Route = Route::empty();
-        let mut next_state : RouteParsing = RouteParsing::Initial;
+        let mut next_state : RouteParsing = RouteParsing::ParsingStartLink;
         for c in input.chars() {
             match state {
-                RouteParsing::Initial => {
+                RouteParsing::ParsingStartLink => {
                     if !c.is_whitespace() {
                         end += 1;
                     }
@@ -566,7 +563,7 @@ impl Route {
                         start = end+1;
                         end = start;
                         state = RouteParsing::FoundSpace;
-                        next_state = RouteParsing::FoundStartLink;
+                        next_state = RouteParsing::ParsingOffset;
                     }
                 }
                 RouteParsing::FoundSpace => {
@@ -578,7 +575,7 @@ impl Route {
                         end = start;
                     }
                 }
-                RouteParsing::FoundStartLink => {
+                RouteParsing::ParsingOffset => {
                     if !c.is_whitespace() {
                         end+=1;
                     }
@@ -587,10 +584,10 @@ impl Route {
                         start = end+2;
                         end = start;
                         state = RouteParsing::FoundSpace;
-                        next_state = RouteParsing::FoundOffset;
+                        next_state = RouteParsing::ParsingDistance;
                     }
                 }
-                RouteParsing::FoundOffset => {
+                RouteParsing::ParsingDistance => {
                     if !c.is_whitespace() {
                         end+=1;
                     }
@@ -598,10 +595,10 @@ impl Route {
                         retval.distance = input[start..=end].trim_start().parse::<f64>().unwrap_or(0.0);
                         start = end+2;
                         state = RouteParsing::FoundSpace;
-                        next_state = RouteParsing::FoundDistance;
+                        next_state = RouteParsing::ParsingPatterns;
                     }
                 }
-                RouteParsing::FoundDistance => {
+                RouteParsing::ParsingPatterns => {
                     if !c.is_whitespace() {
                         end+=1;
                     }
@@ -624,7 +621,7 @@ impl Route {
             }
         }
         match state {
-            RouteParsing::FoundOffset => {
+            RouteParsing::ParsingDistance => {
                 retval.distance = input[start..=end].trim_start().parse::<f64>().unwrap_or(0.0);
             }
             _ => {
