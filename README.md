@@ -16,6 +16,8 @@ A toy road network in Rust as a vehicle for learning and trying out ideas.
 
 # Next up
 
+* More complex networks with more links and a full crossroads junction, including arbitrary headings to test routing decisions.
 * Evaluating a route at a junction to determine which exit to take
   * Map relative turn to a heading based on available exits
   * Map compass and heading to nearest exit based on heading of link leading from it
+
