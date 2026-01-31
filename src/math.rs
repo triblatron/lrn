@@ -549,7 +549,6 @@ impl Route {
         }
     }
     pub fn parse(input:&str) -> Route {
-        let start_of_offset = 0;
         let mut start = 0;
         let mut end = 0;
         let input = input.trim_start();
