@@ -528,6 +528,22 @@ impl FromStr for TurnDirection {
     }
 }
 
+impl FromStr for CompassDirection {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "N" => Ok(CompassDirection::N),
+            "NE" => Ok(CompassDirection::NE),
+            "E" => Ok(CompassDirection::E),
+            "SE" => Ok(CompassDirection::SE),
+            "S" => Ok(CompassDirection::S),
+            "SW" => Ok(CompassDirection::SW),
+            "W" => Ok(CompassDirection::W),
+            "NW" => Ok(CompassDirection::NW),
+            _ => Err(format!("invalid compass direction: {}", s))
+        }
+    }
+}
 impl FromStr for Turn {
     type Err = String;  // or use a custom error type
 
@@ -541,6 +557,10 @@ impl FromStr for Turn {
                     &"Relative" => {
                         let dir = direction.parse().unwrap();
                         Ok(Turn::Relative(dir))
+                    }
+                    &"Compass" => {
+                        let dir:CompassDirection = direction.parse().unwrap();
+                        Ok(Turn::Compass(dir))
                     }
                     _ => {
                         Err("Invalid turn".to_string())
@@ -1279,6 +1299,14 @@ mod tests {
 
     #[rstest]
     #[case("Relative:Straight", Turn::Relative(TurnDirection::Straight))]
+    #[case("Compass:N", Turn::Compass(CompassDirection::N))]
+    #[case("Compass:NE", Turn::Compass(CompassDirection::NE))]
+    #[case("Compass:E", Turn::Compass(CompassDirection::E))]
+    #[case("Compass:SE", Turn::Compass(CompassDirection::SE))]
+    #[case("Compass:S", Turn::Compass(CompassDirection::S))]
+    #[case("Compass:SW", Turn::Compass(CompassDirection::SW))]
+    #[case("Compass:W", Turn::Compass(CompassDirection::W))]
+    #[case("Compass:NW", Turn::Compass(CompassDirection::NW))]
     fn test_parse_turn(#[case] input: &str, #[case] turn:Turn) {
         let actual = input.parse::<Turn>();
         assert_eq!(turn, actual.unwrap());
