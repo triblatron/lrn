@@ -530,7 +530,7 @@ pub struct Route {
 #[derive(Copy, Clone)]
 pub enum RouteParsing {
     ParsingStartLink,
-    FoundSpace,
+    ParsingSpace,
     ParsingOffset,
     ParsingDistance,
     ParsingPatterns,
@@ -562,11 +562,11 @@ impl Route {
                         retval.start_link = input[0..end].parse::<u16>().unwrap_or(0);
                         start = end+1;
                         end = start;
-                        state = RouteParsing::FoundSpace;
+                        state = RouteParsing::ParsingSpace;
                         next_state = RouteParsing::ParsingOffset;
                     }
                 }
-                RouteParsing::FoundSpace => {
+                RouteParsing::ParsingSpace => {
                     if c.is_whitespace() {
                         start += 1;
                     }
@@ -583,7 +583,7 @@ impl Route {
                         retval.offset = input[start..=end].trim_start().parse::<f64>().unwrap_or(0.0);
                         start = end+2;
                         end = start;
-                        state = RouteParsing::FoundSpace;
+                        state = RouteParsing::ParsingSpace;
                         next_state = RouteParsing::ParsingDistance;
                     }
                 }
@@ -594,7 +594,7 @@ impl Route {
                     else {
                         retval.distance = input[start..=end].trim_start().parse::<f64>().unwrap_or(0.0);
                         start = end+2;
-                        state = RouteParsing::FoundSpace;
+                        state = RouteParsing::ParsingSpace;
                         next_state = RouteParsing::ParsingPatterns;
                     }
                 }
@@ -605,7 +605,7 @@ impl Route {
                     else {
                         retval.distance = input[start..=end].trim_start().parse::<f64>().unwrap_or(0.0);
                         start = end+1;
-                        state = RouteParsing::FoundSpace;
+                        state = RouteParsing::ParsingSpace;
                         next_state = RouteParsing::FoundPatterns;
                     }
                 }
