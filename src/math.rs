@@ -562,6 +562,14 @@ impl FromStr for Turn {
                         let dir:CompassDirection = direction.parse().unwrap();
                         Ok(Turn::Compass(dir))
                     }
+                    &"Exit" => {
+                        let dir:u8 = direction.parse().unwrap();
+                        Ok(Turn::Exit(dir))
+                    }
+                    &"Heading" => {
+                        let dir:u32 = direction.parse().unwrap();
+                        Ok(Turn::Heading(dir))
+                    }
                     _ => {
                         Err("Invalid turn".to_string())
                     }
@@ -583,6 +591,19 @@ pub struct TurningPattern {
     count:TurnMultiplicity
 }
 
+impl FromStr for TurningPattern {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = s.split_whitespace().collect();
+
+        match parts.as_slice() {
+            [turn, multiplicity] => {
+                Ok(TurningPattern { turn:turn.parse().unwrap(), count: multiplicity.parse().unwrap() })
+            }
+            _ => Err(format!("invalid turn pattern: {}", s))
+        }
+    }
+}
 #[derive(PartialEq, Debug)]
 pub struct Route {
     start_link:u16,
@@ -597,8 +618,9 @@ pub enum RouteParsing {
     ParsingSpace,
     ParsingOffset,
     ParsingDistance,
-    ParsingPatterns,
-    FoundPatterns
+    ParsingTurn,
+    ParsingTurnPattern,
+    ParsingFinished
 }
 impl Route {
     pub fn empty() -> Route {
@@ -659,34 +681,49 @@ impl Route {
                         retval.distance = input[start..=end].trim_start().parse::<f64>().unwrap_or(0.0);
                         start = end+2;
                         state = RouteParsing::ParsingSpace;
-                        next_state = RouteParsing::ParsingPatterns;
+                        next_state = RouteParsing::ParsingTurnPattern;
                     }
                 }
-                RouteParsing::ParsingPatterns => {
+                RouteParsing::ParsingTurn => {
+                    // Jump over two sets of whitespace
                     if !c.is_whitespace() {
                         end+=1;
                     }
                     else {
-                        retval.distance = input[start..=end].trim_start().parse::<f64>().unwrap_or(0.0);
-                        start = end+1;
                         state = RouteParsing::ParsingSpace;
-                        next_state = RouteParsing::FoundPatterns;
+                        start = end+2;
+                        next_state = RouteParsing::ParsingTurnPattern;
                     }
                 }
-                RouteParsing::FoundPatterns => {
-                    if !c.is_whitespace() {
-                        end+=1;
+                RouteParsing::ParsingTurnPattern => {
+                    let parts = input[start..].split_whitespace().collect::<Vec<_>>();
+                    for chunk in parts.chunks(2) {
+                        println!("{:?}",chunk);
+                        let input = chunk.join(" ");
+                        println!("{}",input);
+                        let turn  = input.parse::<TurningPattern>();
+                        if let Ok(turn) = turn {
+                            retval.patterns.push(turn);
+                        }
+
                     }
-                    else {
-                        let turn = Turn::Relative(TurnDirection::Straight);// input[start..=end].trim_start().parse::<TurningPattern>();
-                        retval.patterns.push(TurningPattern { turn:turn, count: TurnMultiplicity::Count(1) });
-                    }
+                    state = RouteParsing::ParsingFinished;
+
+                }
+                RouteParsing::ParsingFinished => {
+                    // Do nothing.
                 }
             }
         }
         match state {
             RouteParsing::ParsingDistance => {
                 retval.distance = input[start..=end].trim_start().parse::<f64>().unwrap_or(0.0);
+            }
+            RouteParsing::ParsingTurnPattern => {
+                let turn = input[start..=end].trim_start().parse::<TurningPattern>();
+                if let Ok(turn) = turn {
+                    retval.patterns.push(turn);
+                }
             }
             _ => {
 
@@ -1291,7 +1328,8 @@ mod tests {
     #[rstest]
     #[case("1 -1.825 200.0", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
     #[case(" 1  -1.825  200.0", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
-    #[case("1 -1.825 200.0 Straight", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case("1 -1.825 200.0 Relative:Straight Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case("1 -1.825 200.0 Relative:Straight Count:1 Relative:Right Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Relative(TurnDirection::Right), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
     fn test_parse_route(#[case] input: &str, #[case] route:Route) {
         let actual = Route::parse(input);
         assert_eq!(route, actual);
@@ -1318,5 +1356,15 @@ mod tests {
     fn test_parse_turn_multiplicity(#[case] input: &str, #[case] value:TurnMultiplicity) {
         let actual: TurnMultiplicity = input.parse().unwrap();
         assert_eq!(value, actual);
+    }
+
+    #[rstest]
+    #[case("Relative:Straight Count:1", TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) } )]
+    #[case("Compass:N Count:1", TurningPattern { turn:Turn::Compass(CompassDirection::N), count:TurnMultiplicity::Count(1) } )]
+    #[case("Exit:1 Count:1", TurningPattern { turn:Turn::Exit(1), count:TurnMultiplicity::Count(1) } )]
+    #[case("Heading:90 Count:1", TurningPattern { turn:Turn::Heading(90), count:TurnMultiplicity::Count(1) } )]
+    fn test_parse_turning_pattern(#[case] input: &str, #[case] value:TurningPattern) {
+        let actual : TurningPattern = input.parse().unwrap();
+        assert_eq!(value, value);
     }
 }
