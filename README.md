@@ -13,6 +13,7 @@ A toy road network in Rust as a vehicle for learning and trying out ideas.
 * Exits numbering inspired by airport runway designations
 * Evaluation of reciprocal heading: 0 -> 180, 90 -> 270 etc. with normalisation of output to [0,360]
 * Normalisation of heading: -90 -> 270 etc.
+* Parameterised tests of the above using rstest.
 
 # Next up
 
