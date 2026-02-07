@@ -1,6 +1,11 @@
-use std::cell::{RefCell};
+use std::any::Any;
+use std::cell::{Ref, RefCell};
 use std::collections::HashSet;
+use std::ops::{Deref, DerefMut};
+use std::ptr::null;
+use std::rc::Weak;
 use rusqlite::{Connection, Result, Error, Row};
+use std::rc::Rc;
 
 pub enum ParsingState {
     Initial,
@@ -326,15 +331,16 @@ impl Tile {
 
 }
 
+#[derive(Copy,Clone)]
 pub struct Exit {
     link_id: u16,
     exit: u32
 }
 
+#[derive(Clone)]
 pub struct Junction {
     id:u32,
-    incoming : Vec<Exit>,
-    outgoing : Vec<Exit>
+    links: Vec<Rc<RefCell<Exit>>>
 }
 
 impl Junction {
@@ -361,8 +367,7 @@ impl Junction {
     pub fn new(id:u32) -> Junction {
         Junction {
             id,
-            incoming:Vec::new(),
-            outgoing:Vec::new()
+            links: Vec::new()
         }
     }
 
@@ -418,24 +423,17 @@ impl Junction {
     fn from_query(id:u32) -> Junction {
         Junction {
             id,
-            incoming:Vec::new(),
-            outgoing:Vec::new()
+            links:Vec::new()
         }
     }
 
-    pub fn num_outgoing(&self) -> usize {
-        self.outgoing.len()
+    pub fn num_links(&self) -> usize {
+        self.links.len()
     }
 
-    pub fn add_outgoing(&mut self, id:u16, exit_id:u32) {
-        self.outgoing.push(Exit{link_id:id,exit:exit_id});
-    }
-    pub fn num_incoming(&self) -> usize {
-        self.incoming.len()
-    }
 
-    pub fn add_incoming(&mut self, id:u16, exit_id:u32) {
-        self.incoming.push(Exit{link_id:id,exit:exit_id});
+    pub fn add_link(&mut self, id:u16, exit_id:u32) {
+        self.links.push(Rc::new(RefCell::new(Exit{link_id:id,exit:exit_id})));
     }
 }
 pub struct Link {
@@ -750,23 +748,63 @@ impl Routing {
         }
     }
 }
+
+pub struct SpanningNode {
+    children: Vec<Rc<RefCell<SpanningNode>>>,
+    parent: Weak<SpanningNode>,
+    value:Weak<RefCell<Junction>>
+}
+
+impl SpanningNode {
+    pub fn new(junc:Rc<RefCell<Junction>>) -> SpanningNode {
+
+        SpanningNode {
+            children:vec![],
+            parent: Weak::new(),
+            value: Rc::downgrade(&junc)
+        }
+    }
+
+    pub fn empty() -> SpanningNode {
+        SpanningNode {
+            children:vec![],
+            parent: Weak::new(),
+            value: Weak::new()
+        }
+    }
+
+    pub fn num_nodes(&self) -> usize {
+        let mut retval:usize = 0;
+        self.num_nodes_helper(retval)
+    }
+
+    fn num_nodes_helper(&self, count:usize) -> usize {
+        let mut retval:usize = count+1;
+        for child in &self.children {
+            retval += child.borrow().num_nodes();
+        }
+        retval
+    }
+}
 pub struct Network {
     links : Vec<Box<Link>>,
-    junctions : Vec<Box<Junction>>,
+    junctions : Vec<Rc<RefCell<Junction>>>,
     tiles: Vec<Box<Tile>>,
     segments: Vec<Box<Segment>>,
     // One for each Junction
-    routing: RefCell<Routing>
+    routing: RefCell<Routing>,
+    spanning_tree: Rc<RefCell<SpanningNode>>
 }
 
 impl<'a> Network {
-    pub fn new(links:Vec<Box<Link>>, junctions:Vec<Box<Junction>>) -> Network {
+    pub fn new(links:Vec<Box<Link>>, junctions:Vec<Rc<RefCell<Junction>>>) -> Network {
         Network {
             links,
             junctions,
             tiles: Vec::new(),
             segments: Vec::new(),
-            routing:RefCell::new(Routing::new())
+            routing:RefCell::new(Routing::new()),
+            spanning_tree: Rc::new(RefCell::from(SpanningNode::empty()))
         }
     }
 
@@ -778,10 +816,11 @@ impl<'a> Network {
         let mut network = Network::empty();
         network.set_links(link_gw.find_all().unwrap_or(Vec::new()));
         network.set_junctions(junc_gw.find_all().unwrap_or(Vec::new()));
-        network.set_junction_connections(&mut junc_gw.find_connections().unwrap_or(Vec::<(u32,u16,bool,u32)>::new()));
+        network.set_junction_connections(&mut junc_gw.find_connections().unwrap_or(Vec::<(u32,u16,u32)>::new()));
         network.set_tiles(tile_gw.find_all().unwrap_or(Vec::new()));
         network.set_segments(seg_gw.find_all().unwrap_or(Vec::new()));
         network.build_routes();
+        network.build_spanning_tree();
         network
     }
 
@@ -797,7 +836,7 @@ impl<'a> Network {
         // for junc in &self.junctions {
         //     junc.build_routes(self, &mut self.routing.borrow_mut());
         // }
-        let print_step = |junc:&Junction, link:&Link, exit:u32, dest_junc:u32, path:&Vec<(u32,u32)>| {
+        let print_step = |junc:Rc<RefCell<Junction>>, link:&Link, exit:u32, dest_junc:u32, path:&Vec<(u32,u32)>| {
             // self.routing.borrow_mut().hops.insert(Hop::from(junc.id,
             //                                                 LogicalAddress::new(Identifier::new(link.id, 0, 0, 0), Mask::new(true, false, false, false)),
             //                                                 LogicalAddress::new(Identifier::new(link.id, 0, 0, 0), Mask::new(true, false, false, false)),
@@ -818,7 +857,7 @@ impl<'a> Network {
             if let Some(last_junc) = path.last() {
                 let last_junc = self.get_junc(last_junc.0);
 
-                if last_junc.outgoing.is_empty() {
+                if last_junc.borrow().links.is_empty() {
 
                     // Iterate over path, adding routes
                     for i in 0..path.len() {
@@ -829,60 +868,72 @@ impl<'a> Network {
                             if path[i].0 != path[j].0 && path[i].1 != 270 {
                                 //println!("origin_junc: {} dest_junc: {} exit {}", src_junc.id, dest_junc.id, path[i].1);
 
-                                println!("Add route from {} to {} via {} exit {}", src_junc.id, dest_junc.id, path[i].0, path[i].1);
-                                self.routing.borrow_mut().hops.insert(Hop::from(src_junc.id, dest_junc.id, path[i].1));
+                                println!("Add route from {} to {} via {} exit {}", src_junc.borrow().id, dest_junc.borrow().id, path[i].0, path[i].1);
+                                self.routing.borrow_mut().hops.insert(Hop::from(src_junc.borrow().id, dest_junc.borrow().id, path[i].1));
                             }
                         }
                     }
                 }
             }
         };
-        self.depth_first_traversal(&print_step, |junc:&Junction| println!("{}", junc.id));
+        self.depth_first_traversal(&print_step, |junc:Rc<RefCell<Junction>>| println!("{}", junc.borrow().id));
     }
 
-    fn depth_first_traversal_helper<LinkFunc, JuncFunc>(& self, junc:&Junction, visited:&mut HashSet<u32>, path: &mut Vec<(u32,u32)>, link_func:&LinkFunc, junc_func:&JuncFunc) -> ()
-    where LinkFunc : Fn(&Junction, &Link, u32, u32, &Vec<(u32,u32)>),
-        JuncFunc: Fn(&Junction)
+    fn build_spanning_tree(&mut self) -> () {
+        let mut level = 0;
+        {
+
+        }
+        let parent_stack:RefCell<Vec<Rc<RefCell<SpanningNode>>>> = RefCell::from(Vec::new());
+        parent_stack.borrow_mut().push(Rc::from(RefCell::new(SpanningNode::new(self.junctions[0].clone()))));
+        let build = |junc:Rc<RefCell<Junction>>| {//, link:&Link, exit:u32, dest_junc:u32, path:&Vec<(u32,u32)>| {
+            let mut parent_stack = parent_stack.borrow_mut();
+            if let Some(top) = parent_stack.deref().last() {
+                top.borrow_mut().children.push(Rc::from(RefCell::new(SpanningNode::new(junc.clone()))));
+                parent_stack.push(Rc::from(RefCell::new(SpanningNode::new(junc.clone()))));
+            }
+        };
+        if let Some(root) = parent_stack.borrow_mut().last() {
+            self.spanning_tree = root.clone();
+        }
+        let empty = |junc:Rc<RefCell<Junction>>, link:&Link, exit:u32, origin:u32, path:&Vec<(u32,u32)>| {
+        };
+        self.depth_first_traversal(&empty, &build);
+    }
+
+    fn depth_first_traversal_helper<LinkFunc, JuncFunc>(& self, junc:Rc<RefCell<Junction>>, visited:&mut HashSet<u32>, path: &mut Vec<(u32,u32)>, link_func:&LinkFunc, junc_func:&JuncFunc) -> ()
+    where LinkFunc : Fn(Rc<RefCell<Junction>>, &Link, u32, u32, &Vec<(u32,u32)>),
+        JuncFunc: Fn(Rc<RefCell<Junction>>)
     {
-        if !visited.contains(&junc.id) {
-            visited.insert(junc.id);
-            for exit in &junc.incoming {
-                let link = self.get_link(exit.link_id);
-                junc_func(junc);
+        if !visited.contains(&junc.borrow().id) {
+            visited.insert(junc.borrow().id);
+            for exit in &junc.borrow().links {
+                let link = self.get_link(exit.borrow().link_id);
                 let dest_junc = link.destination;
                 if let Some(origin) = link.origin && dest_junc.is_some() {
-                    path.push((dest_junc.unwrap(),exit.exit));
+                    path.push((dest_junc.unwrap(),exit.borrow().exit));
                     let destination = self.get_junc(dest_junc.unwrap());
                     let origin = self.get_junc(origin);
-                    link_func(destination, link, exit.exit, origin.id, path);
-                    if !visited.contains(&origin.id) {
-                        self.depth_first_traversal_helper(origin, visited, path, link_func, junc_func);
+                    junc_func(destination.clone());
+                    link_func(destination.clone(), link, exit.borrow().exit, origin.borrow().id, path);
+                    if !visited.contains(&destination.borrow().id) {
+                        self.depth_first_traversal_helper(destination, visited, path, link_func, junc_func);
                     }
                 }
             }
 
-            for exit in &junc.outgoing {
-                let link = self.get_link(exit.link_id);
-                if let Some(destination) = link.destination {
-                    path.push((junc.id,exit.exit));
-                    link_func(junc, link, exit.exit, destination, path);
-                    if !visited.contains(&destination) {
-                        self.depth_first_traversal_helper(self.get_junc(destination), visited, path, link_func, junc_func);
-                    }
-                }
-            }
             path.pop();
         }
     }
 
     pub fn depth_first_traversal<LinkFunc, JuncFunc>(&self, link_func:&LinkFunc, junc_func:JuncFunc) -> ()
-    where LinkFunc: Fn(&Junction, &Link, u32, u32, &Vec<(u32,u32)>),
-        JuncFunc: Fn(&Junction)
+    where LinkFunc: Fn(Rc<RefCell<Junction>>, &Link, u32, u32, &Vec<(u32,u32)>),
+        JuncFunc: Fn(Rc<RefCell<Junction>>)
     {
         let mut visited: HashSet<u32> = HashSet::new();
         let mut path:Vec<(u32,u32)> = Vec::new();
         if !self.junctions.is_empty() {
-            let junc = &self.get_junc(1);
+            let junc = self.get_junc(1);
             self.depth_first_traversal_helper(junc, &mut visited, &mut path, link_func, &junc_func);
         }
     }
@@ -894,6 +945,7 @@ impl<'a> Network {
             tiles: Vec::new(),
             segments:Vec::new(),
             routing:RefCell::new(Routing::new()),
+            spanning_tree:Rc::new(RefCell::from(SpanningNode::empty()))
         }
     }
 
@@ -905,10 +957,10 @@ impl<'a> Network {
         for hop in &self.routing.borrow().hops {
             let junc = self.get_junc(hop.junction);
             let dest = self.get_junc(hop.dest_junc);
-            if  junc.id == junc_id && dest.id == dest_junc && to_dest {
+            if  junc.borrow().id == junc_id && dest.borrow().id == dest_junc && to_dest {
                 return Some(*hop);
             }
-            if junc.id == junc_id && dest.id == src_junc.id && !to_dest {
+            if junc.borrow().id == junc_id && dest.borrow().id == src_junc.borrow().id && !to_dest {
                 return Some(*hop);
             }
         }
@@ -931,21 +983,16 @@ impl<'a> Network {
         self.links = links;
     }
 
-    pub fn set_junctions(&mut self, junctions:Vec<Box<Junction>>) {
+    pub fn set_junctions(&mut self, junctions:Vec<Rc<RefCell<Junction>>>) {
         self.junctions = junctions;
     }
 
     pub fn set_tiles(&mut self, tiles:Vec<Box<Tile>>) {
         self.tiles = tiles;
     }
-    pub fn set_junction_connections(&mut self, connections: &mut Vec<(u32, u16, bool, u32)>) {
+    pub fn set_junction_connections(&mut self, connections: &mut Vec<(u32, u16, u32)>) {
         for connection in connections {
-            if connection.2 {
-                self.get_junc_mut(connection.0).add_outgoing(connection.1, connection.3);
-            }
-            else {
-                self.get_junc_mut(connection.0).add_incoming(connection.1, connection.3);
-            }
+        self.get_junc_mut(connection.0).borrow_mut().add_link(connection.1, connection.2);
         }
     }
 
@@ -961,15 +1008,15 @@ impl<'a> Network {
         self.junctions.len()
     }
 
-    pub fn get_junc_mut(&mut self, id:u32) -> &mut Junction {
-        &mut self.junctions[(id - 1) as usize]
+    pub fn get_junc_mut(&mut self, id:u32) -> Rc<RefCell<Junction>> {
+        self.junctions[(id - 1) as usize].clone()
     }
 
-    pub fn get_junc(&self, id:u32) -> &Junction {
-        &self.junctions[(id-1) as usize]
+    pub fn get_junc(&self, id:u32) -> Rc<RefCell<Junction>> {
+        self.junctions[(id-1) as usize].clone()
     }
 
-    pub fn get_junc_if_exists(&self, id: Option<u32>) -> Option<&Junction> {
+    pub fn get_junc_if_exists(&self, id: Option<u32>) -> Option<Rc<RefCell<Junction>>> {
         if let Some(valid_id) = id {
             Some(self.get_junc(valid_id))
         }
@@ -977,7 +1024,7 @@ impl<'a> Network {
             None
         }
     }
-    pub fn get_junc_if_exists_mut(&mut self, id: Option<u32>) -> Option<&mut Junction> {
+    pub fn get_junc_if_exists_mut(&mut self, id: Option<u32>) -> Option<Rc<RefCell<Junction>>> {
         if let Some(valid_id) = id {
             Some(self.get_junc_mut(valid_id))
         }
@@ -997,7 +1044,7 @@ impl<'a> Network {
 
 pub struct NetworkBuilder {
     links:Vec<Box<Link>>,
-    junctions:Vec<Box<Junction>>,
+    junctions:Vec<Rc<RefCell<Junction>>>,
     next_junc:u32,
     next_link:u16
 }
@@ -1016,12 +1063,12 @@ impl<'a> NetworkBuilder {
         self.links.push(Box::new(Link::new(self.next_link)));
         self.next_link+=1;
         if let Some(j) = self.junctions.last_mut() {
-            j.outgoing.push(Exit{link_id:self.links.last().unwrap().id,exit:90});
+            j.borrow_mut().links.push(Rc::new(RefCell::new(Exit{link_id:self.links.last().unwrap().id,exit:90})));
         }
     }
 
     pub fn add_junction(&mut self) {
-        self.junctions.push(Box::new(Junction::new(self.next_junc)));
+        self.junctions.push(Rc::new(RefCell::from(Junction::new(self.next_junc))));
         self.next_junc += 1;
     }
 
@@ -1073,7 +1120,7 @@ impl<'a> JunctionGateway<'a> {
             connection
         }
     }
-    pub fn find_all(&self) -> Result<Vec<Box<Junction>>, Error> {
+    pub fn find_all(&self) -> Result<Vec<Rc<RefCell<Junction>>>, Error> {
         let mut statement = self.connection.prepare("SELECT * FROM junctions;");
         if let  Err(e) = statement {
             return Err(e);
@@ -1082,21 +1129,21 @@ impl<'a> JunctionGateway<'a> {
         let junc_iter = statement.query_map([], |row| {
             Ok(Junction::from_query(row.get(0).unwrap()))
         });
-        let mut juncs = Vec::new();
+        let mut juncs:Vec<Rc<RefCell<Junction>>> = Vec::new();
         for junc in junc_iter.unwrap() {
-            juncs.push(Box::new(junc.unwrap()));
+            juncs.push(Rc::new(RefCell::from(junc.unwrap())));
         }
         Ok(juncs)
     }
 
-    pub fn find_connections(&self) -> Result<Vec<(u32,u16,bool,u32)>, Error> {
+    pub fn find_connections(&self) -> Result<Vec<(u32,u16,u32)>, Error> {
         let mut statement = self.connection.prepare("SELECT * FROM junctions_links;");
         if let  Err(e) = statement {
             return Err(e);
         }
         let mut statement = statement.unwrap();
         let connection_iter = statement.query_map([], |row| {
-            Ok((row.get::<usize, u32>(0).unwrap() as u32, row.get::<usize,u16>(1).unwrap(), row.get::<usize,bool>(2).unwrap(), row.get::<usize,u32>(3).unwrap()))
+            Ok((row.get::<usize, u32>(0).unwrap() as u32, row.get::<usize,u16>(1).unwrap(), row.get::<usize,u32>(2).unwrap()))
         });
         let mut connections = Vec::new();
         for connection in connection_iter.unwrap() {
@@ -1163,6 +1210,7 @@ impl<'a> SegmentGateway<'a> {
 }
 #[cfg(test)]
 mod tests {
+    use std::ops::Deref;
     use rstest::rstest;
     use rusqlite::Connection;
     use super::*;
@@ -1245,16 +1293,15 @@ mod tests {
     }
 
     #[rstest]
-    #[case("data/tests/LoadFromDB/onelink.db", 2, 1, 1, 0)]
-    #[case("data/tests/LoadFromDB/onelink.db", 2, 2, 0, 1)]
-    #[case("data/tests/LoadFromDB/twolinks.db", 3, 2, 1, 1)]
-    #[case("data/tests/LoadFromDB/twolinks.db", 3, 3, 0, 1)]
-    fn test_create_network_from_db_junctions(#[case]dbfile:&str, #[case] num_juncs:usize, #[case] junc_id:u32, #[case] num_outgoing:usize, #[case] num_incoming:usize) {
+    #[case("data/tests/LoadFromDB/onelink.db", 2, 1, 1)]
+    #[case("data/tests/LoadFromDB/onelink.db", 2, 2, 1)]
+    #[case("data/tests/LoadFromDB/twolinks.db", 3, 2, 2)]
+    #[case("data/tests/LoadFromDB/twolinks.db", 3, 3, 1)]
+    fn test_create_network_from_db_junctions(#[case]dbfile:&str, #[case] num_juncs:usize, #[case] junc_id:u32, #[case] num_links:usize) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let mut network = Network::from(&connection);
         assert_eq!(num_juncs, network.num_junctions());
-        assert_eq!(num_outgoing, network.get_junc_mut(junc_id).num_outgoing());
-        assert_eq!(num_incoming, network.get_junc_mut(junc_id).num_incoming());
+        assert_eq!(num_links, network.get_junc_mut(junc_id).borrow().num_links());
     }
 
     #[rstest]
@@ -1358,5 +1405,12 @@ mod tests {
     fn test_parse_turning_pattern(#[case] input: &str, #[case] value:TurningPattern) {
         let actual : TurningPattern = input.parse().unwrap();
         assert_eq!(value, value);
+    }
+    #[rstest]
+    #[case("data/tests/LoadFromDB/onelink.db", 2)]
+    fn test_spanning_tree_num_nodes(#[case] dbfile: &str, #[case] num_nodes:usize) {
+        let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
+        let network = Network::from(&connection);
+        assert_eq!(num_nodes, network.spanning_tree.deref().borrow().num_nodes());
     }
 }
