@@ -750,16 +750,16 @@ impl Routing {
 
 pub struct SpanningNode {
     children: Vec<Rc<RefCell<SpanningNode>>>,
-    parent: Weak<SpanningNode>,
+    parent: Weak<RefCell<SpanningNode>>,
     value:Weak<RefCell<Junction>>
 }
 
 impl SpanningNode {
-    pub fn new(junc:Rc<RefCell<Junction>>) -> SpanningNode {
+    pub fn new(parent:Weak<RefCell<SpanningNode>>, junc:Rc<RefCell<Junction>>) -> SpanningNode {
 
         SpanningNode {
             children:vec![],
-            parent: Weak::new(),
+            parent: parent,
             value: Rc::downgrade(&junc)
         }
     }
@@ -784,6 +784,12 @@ impl SpanningNode {
         }
         retval
     }
+
+    pub fn depth_first_traversal<NodeFunc>(node:Rc<RefCell<SpanningNode>>, node_func:NodeFunc) -> ()
+    where NodeFunc : Fn(Rc<RefCell<SpanningNode>>)
+    {
+        node_func(node);
+    }
 }
 pub struct Network {
     links : Vec<Box<Link>>,
@@ -803,7 +809,7 @@ impl<'a> Network {
             tiles: Vec::new(),
             segments: Vec::new(),
             routing:RefCell::new(Routing::new()),
-            spanning_tree: Rc::new(RefCell::from(SpanningNode::empty()))
+            spanning_tree: Rc::new(RefCell::new(SpanningNode::empty()))
         }
     }
 
@@ -818,8 +824,8 @@ impl<'a> Network {
         network.set_junction_connections(&mut junc_gw.find_connections().unwrap_or(Vec::<(u32,u16,u32)>::new()));
         network.set_tiles(tile_gw.find_all().unwrap_or(Vec::new()));
         network.set_segments(seg_gw.find_all().unwrap_or(Vec::new()));
-        network.build_routes();
         network.build_spanning_tree();
+        network.build_routes();
         network
     }
 
@@ -835,57 +841,62 @@ impl<'a> Network {
         // for junc in &self.junctions {
         //     junc.build_routes(self, &mut self.routing.borrow_mut());
         // }
-        let print_step = |junc:Rc<RefCell<Junction>>, link:&Link, exit:u32, dest_junc:u32, path:&Vec<(u32,u32)>| {
-            // self.routing.borrow_mut().hops.insert(Hop::from(junc.id,
-            //                                                 LogicalAddress::new(Identifier::new(link.id, 0, 0, 0), Mask::new(true, false, false, false)),
-            //                                                 LogicalAddress::new(Identifier::new(link.id, 0, 0, 0), Mask::new(true, false, false, false)),
-            //                                                 exit
-            // )
-            // );
-            // For each outgoing link reachable directly from dest_junc, add a route from origin to origin via link
-            //let dest_junc = self.get_junc(dest_junc);
-            // for outgoing_exit in &dest_junc.outgoing {
-            //     let outgoing_link = self.get_link(outgoing_exit.link_id);
-            //     self.routing.borrow_mut().hops.insert(Hop::from(junc.id,
-            //     LogicalAddress::new(Identifier::new(outgoing_link.id, 0, 0, 0), Mask::new(true, false, false, false)),
-            //     LogicalAddress::new(Identifier::new(link.id, 0, 0, 0), Mask::new(true, false, false, false)),
-            //     exit
-            //     ));
-            //     println!("Add route: {} {} {} {}", junc.id, outgoing_exit.link_id, link.id, exit);
-            // }
-            if let Some(last_junc) = path.last() {
-                let last_junc = self.get_junc(last_junc.0);
+        // let print_step = |junc:Rc<RefCell<Junction>>, link:&Link, exit:u32, dest_junc:u32, path:&Vec<(u32,u32)>| {
+        //     // self.routing.borrow_mut().hops.insert(Hop::from(junc.id,
+        //     //                                                 LogicalAddress::new(Identifier::new(link.id, 0, 0, 0), Mask::new(true, false, false, false)),
+        //     //                                                 LogicalAddress::new(Identifier::new(link.id, 0, 0, 0), Mask::new(true, false, false, false)),
+        //     //                                                 exit
+        //     // )
+        //     // );
+        //     // For each outgoing link reachable directly from dest_junc, add a route from origin to origin via link
+        //     //let dest_junc = self.get_junc(dest_junc);
+        //     // for outgoing_exit in &dest_junc.outgoing {
+        //     //     let outgoing_link = self.get_link(outgoing_exit.link_id);
+        //     //     self.routing.borrow_mut().hops.insert(Hop::from(junc.id,
+        //     //     LogicalAddress::new(Identifier::new(outgoing_link.id, 0, 0, 0), Mask::new(true, false, false, false)),
+        //     //     LogicalAddress::new(Identifier::new(link.id, 0, 0, 0), Mask::new(true, false, false, false)),
+        //     //     exit
+        //     //     ));
+        //     //     println!("Add route: {} {} {} {}", junc.id, outgoing_exit.link_id, link.id, exit);
+        //     // }
+        //     if let Some(last_junc) = path.last() {
+        //         let last_junc = self.get_junc(last_junc.0);
+        //
+        //         if last_junc.borrow().links.is_empty() {
+        //
+        //             // Iterate over path, adding routes
+        //             for i in 0..path.len() {
+        //                 println!("path: junc {} exit {}", path[i].0, path[i].1);
+        //                 let src_junc = self.get_junc(path[i].0);
+        //                 for j in i+1..path.len() {
+        //                     let dest_junc = self.get_junc(path[j].0);
+        //                     if path[i].0 != path[j].0 && path[i].1 != 270 {
+        //                         //println!("origin_junc: {} dest_junc: {} exit {}", src_junc.id, dest_junc.id, path[i].1);
+        //
+        //                         println!("Add route from {} to {} via {} exit {}", src_junc.borrow().id, dest_junc.borrow().id, path[i].0, path[i].1);
+        //                         self.routing.borrow_mut().hops.insert(Hop::from(src_junc.borrow().id, dest_junc.borrow().id, path[i].1));
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+        // };
+        // self.depth_first_traversal(&print_step, |junc:Rc<RefCell<Junction>>| println!("{}", junc.borrow().id));
+        let build = |node:Rc<RefCell<SpanningNode>>| {
 
-                if last_junc.borrow().links.is_empty() {
-
-                    // Iterate over path, adding routes
-                    for i in 0..path.len() {
-                        println!("path: junc {} exit {}", path[i].0, path[i].1);
-                        let src_junc = self.get_junc(path[i].0);
-                        for j in i+1..path.len() {
-                            let dest_junc = self.get_junc(path[j].0);
-                            if path[i].0 != path[j].0 && path[i].1 != 270 {
-                                //println!("origin_junc: {} dest_junc: {} exit {}", src_junc.id, dest_junc.id, path[i].1);
-
-                                println!("Add route from {} to {} via {} exit {}", src_junc.borrow().id, dest_junc.borrow().id, path[i].0, path[i].1);
-                                self.routing.borrow_mut().hops.insert(Hop::from(src_junc.borrow().id, dest_junc.borrow().id, path[i].1));
-                            }
-                        }
-                    }
-                }
-            }
         };
-        self.depth_first_traversal(&print_step, |junc:Rc<RefCell<Junction>>| println!("{}", junc.borrow().id));
+        SpanningNode::depth_first_traversal(self.spanning_tree.clone(),&build);
     }
 
     fn build_spanning_tree(&mut self) -> () {
         let parent_stack:RefCell<Vec<Rc<RefCell<SpanningNode>>>> = RefCell::from(Vec::new());
-        parent_stack.borrow_mut().push(Rc::from(RefCell::new(SpanningNode::new(self.junctions[0].clone()))));
+        parent_stack.borrow_mut().push(Rc::from(RefCell::from(SpanningNode::new(Weak::new(), self.junctions[0].clone()))));
         let build = |junc:Rc<RefCell<Junction>>| {//, link:&Link, exit:u32, dest_junc:u32, path:&Vec<(u32,u32)>| {
             let mut parent_stack = parent_stack.borrow_mut();
             if let Some(top) = parent_stack.deref().last() {
-                top.borrow_mut().children.push(Rc::from(RefCell::new(SpanningNode::new(junc.clone()))));
-                parent_stack.push(Rc::from(RefCell::new(SpanningNode::new(junc.clone()))));
+                let child = Rc::from(RefCell::new(SpanningNode::new(Rc::downgrade(&top.clone()), junc.clone())));
+                top.borrow_mut().children.push(child.clone());
+                parent_stack.push(child.clone());
             }
         };
         if let Some(root) = parent_stack.borrow_mut().last() {
@@ -909,9 +920,9 @@ impl<'a> Network {
                     path.push((dest_junc.unwrap(),exit.borrow().exit));
                     let destination = self.get_junc(dest_junc.unwrap());
                     let origin = self.get_junc(origin);
-                    junc_func(destination.clone());
-                    link_func(destination.clone(), link, exit.borrow().exit, origin.borrow().id, path);
                     if !visited.contains(&destination.borrow().id) {
+                        junc_func(destination.clone());
+                        link_func(destination.clone(), link, exit.borrow().exit, origin.borrow().id, path);
                         self.depth_first_traversal_helper(destination, visited, path, link_func, junc_func);
                     }
                 }
