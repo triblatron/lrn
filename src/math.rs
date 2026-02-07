@@ -1,8 +1,7 @@
 use std::any::Any;
-use std::cell::{Ref, RefCell};
+use std::cell::{RefCell};
 use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
-use std::ptr::null;
 use std::rc::Weak;
 use rusqlite::{Connection, Result, Error, Row};
 use std::rc::Rc;
@@ -880,10 +879,6 @@ impl<'a> Network {
     }
 
     fn build_spanning_tree(&mut self) -> () {
-        let mut level = 0;
-        {
-
-        }
         let parent_stack:RefCell<Vec<Rc<RefCell<SpanningNode>>>> = RefCell::from(Vec::new());
         parent_stack.borrow_mut().push(Rc::from(RefCell::new(SpanningNode::new(self.junctions[0].clone()))));
         let build = |junc:Rc<RefCell<Junction>>| {//, link:&Link, exit:u32, dest_junc:u32, path:&Vec<(u32,u32)>| {
