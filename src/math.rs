@@ -918,7 +918,7 @@ fn dummy(&self, junc:&Junction, link:&Link, exit:u32, dest_junc:u32) -> () {
                 }
                 path.reverse();
                 for i in 0..path.len() {
-                    let src_junc = &path[i].borrow().value.upgrade().clone().unwrap().borrow().clone();;
+                    let src_junc = &path[i].borrow().value.upgrade().clone().unwrap().borrow().clone();
                     println!("path: junc {}", src_junc.id);
                     if i+1<path.len() {
                         let next_hop = &path[i + 1].borrow().value.upgrade().clone().unwrap().borrow().clone();
