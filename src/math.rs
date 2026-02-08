@@ -1,7 +1,6 @@
-use std::any::Any;
 use std::cell::{RefCell};
 use std::collections::HashSet;
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref};
 use std::rc::Weak;
 use rusqlite::{Connection, Result, Error, Row};
 use std::rc::Rc;
@@ -370,6 +369,7 @@ impl Junction {
         }
     }
 
+
     // fn build_routes(&self, network:& Network, routing:&mut Routing) -> () {
     //     // Build immediately accessible hops
     //     // for exit in &self.outgoing {
@@ -492,6 +492,7 @@ pub enum Turn {
 }
 
 use std::str::FromStr;
+use rusqlite::fallible_iterator::FallibleIterator;
 
 impl FromStr for TurnMultiplicity {
     type Err = String;
@@ -748,6 +749,7 @@ impl Routing {
     }
 }
 
+#[derive(Clone)]
 pub struct SpanningNode {
     children: Vec<Rc<RefCell<SpanningNode>>>,
     parent: Weak<RefCell<SpanningNode>>,
@@ -755,12 +757,12 @@ pub struct SpanningNode {
 }
 
 impl SpanningNode {
-    pub fn new(parent:Weak<RefCell<SpanningNode>>, junc:Rc<RefCell<Junction>>) -> SpanningNode {
+    pub fn new(parent:Weak<RefCell<SpanningNode>>, junc:Weak<RefCell<Junction>>) -> SpanningNode {
 
         SpanningNode {
             children:vec![],
             parent: parent,
-            value: Rc::downgrade(&junc)
+            value: junc
         }
     }
 
@@ -773,7 +775,7 @@ impl SpanningNode {
     }
 
     pub fn num_nodes(&self) -> usize {
-        let mut retval:usize = 0;
+        let retval:usize = 0;
         self.num_nodes_helper(retval)
     }
 
@@ -785,12 +787,16 @@ impl SpanningNode {
         retval
     }
 
-    pub fn depth_first_traversal<NodeFunc>(node:Rc<RefCell<SpanningNode>>, node_func:NodeFunc) -> ()
+    pub fn depth_first_traversal<NodeFunc>(node:Rc<RefCell<SpanningNode>>, node_func:&NodeFunc) -> ()
     where NodeFunc : Fn(Rc<RefCell<SpanningNode>>)
     {
-        node_func(node);
+        node_func(node.clone());
+        for child in &node.borrow().children {
+            Self::depth_first_traversal(child.clone(), node_func);
+        }
     }
 }
+
 pub struct Network {
     links : Vec<Box<Link>>,
     junctions : Vec<Rc<RefCell<Junction>>>,
@@ -829,7 +835,27 @@ impl<'a> Network {
         network
     }
 
-    fn dummy(&self, junc:&Junction, link:&Link, exit:u32, dest_junc:u32) -> () {
+    pub fn find_exit(&self, from:&Junction, to:&Junction) -> usize {
+        // let from = from.upgrade().unwrap().clone().borrow();
+        // let to = to.upgrade().unwrap().clone().borrow();
+        for i in 0..from.links.len() {
+            let exit = from.links[i].borrow();
+            let link = self.get_link(exit.link_id);
+            if let Some(origin) = link.origin {
+                if let Some(dest) = link.destination {
+                    if self.get_junc(origin).borrow().id == from.id && self.get_junc(dest).borrow().id == to.id {
+                        return i;
+                    }
+                    if self.get_junc(origin).borrow().id == to.id && self.get_junc(dest).borrow().id == from.id {
+                        return i;
+                    }
+                }
+            }
+        }
+        return usize::max_value();
+    }
+
+fn dummy(&self, junc:&Junction, link:&Link, exit:u32, dest_junc:u32) -> () {
         println!("{} {} {} {}", junc.id, link.id, exit, dest_junc);
     }
 
@@ -883,18 +909,49 @@ impl<'a> Network {
         // };
         // self.depth_first_traversal(&print_step, |junc:Rc<RefCell<Junction>>| println!("{}", junc.borrow().id));
         let build = |node:Rc<RefCell<SpanningNode>>| {
+            if node.borrow().children.is_empty() {
+                let mut root:Weak<RefCell<SpanningNode>> = Rc::downgrade(&node);
+                let mut path:Vec<Rc<RefCell<SpanningNode>>> = vec![];
+                while let Some(parent) = root.upgrade() {
+                    root = parent.borrow().parent.clone();
+                    path.push(parent);
+                }
+                path.reverse();
+                for i in 0..path.len() {
+                    let src_junc = &path[i].borrow().value.upgrade().clone().unwrap().borrow().clone();;
+                    println!("path: junc {}", src_junc.id);
+                    if i+1<path.len() {
+                        let next_hop = &path[i + 1].borrow().value.upgrade().clone().unwrap().borrow().clone();
+                        let exit_index = self.find_exit(src_junc, next_hop);
+                        if exit_index != usize::max_value() {
+                            let exit = src_junc.links[exit_index].clone();
+                            self.routing.borrow_mut().hops.insert(Hop::from(src_junc.id, next_hop.id, exit.borrow().exit));
+                            for j in i + 2..path.len() {
+                                let dest_junc = &path[j].borrow().value.upgrade().unwrap().borrow().clone();
+                                if src_junc.id != dest_junc.id && exit.borrow().exit != 270 {
+                                    //println!("origin_junc: {} dest_junc: {} exit {}", src_junc.id, dest_junc.id, path[i].1);
 
+                                    println!("Add route from {} to {} via {} exit {}", src_junc.id, dest_junc.id, src_junc.id, exit.borrow().exit);
+                                    self.routing.borrow_mut().hops.insert(Hop::from(src_junc.id, dest_junc.id, exit.borrow().exit));
+                                }
+                            }
+                        } else {
+                            println!("Warning team:No exit from {} to {}", src_junc.id, next_hop.id);
+                        }
+                    }
+                }
+            }
         };
         SpanningNode::depth_first_traversal(self.spanning_tree.clone(),&build);
     }
 
     fn build_spanning_tree(&mut self) -> () {
         let parent_stack:RefCell<Vec<Rc<RefCell<SpanningNode>>>> = RefCell::from(Vec::new());
-        parent_stack.borrow_mut().push(Rc::from(RefCell::from(SpanningNode::new(Weak::new(), self.junctions[0].clone()))));
+        parent_stack.borrow_mut().push(Rc::from(RefCell::from(SpanningNode::new(Weak::new(), Rc::downgrade(&(self.junctions[0].clone()))))));
         let build = |junc:Rc<RefCell<Junction>>| {//, link:&Link, exit:u32, dest_junc:u32, path:&Vec<(u32,u32)>| {
             let mut parent_stack = parent_stack.borrow_mut();
             if let Some(top) = parent_stack.deref().last() {
-                let child = Rc::from(RefCell::new(SpanningNode::new(Rc::downgrade(&top.clone()), junc.clone())));
+                let child = Rc::from(RefCell::new(SpanningNode::new(Rc::downgrade(&top.clone()), Rc::downgrade(&junc.clone()))));
                 top.borrow_mut().children.push(child.clone());
                 parent_stack.push(child.clone());
             }
@@ -1327,7 +1384,7 @@ mod tests {
     }
 
     #[rstest]
-    // #[case("data/tests/LoadFromDB/onelink.db", 1, 1, 1, true, true, 1, 90)]
+    #[case("data/tests/LoadFromDB/onelink.db", 1, 1, 2, true, true, 90)]
     #[case("data/tests/LoadFromDB/twolinks.db", 1, 1, 2, true, true, 90)]
     #[case("data/tests/LoadFromDB/twolinks.db", 1, 1, 3, true, true, 90)]
     fn test_routing(#[case] dbfile:&str, #[case] junc_id:u32, #[case] source_junc:u32, #[case] dest_junc: u32, #[case] to_dest:bool, #[case] exists:bool, #[case] next_exit:u32) {
@@ -1418,5 +1475,17 @@ mod tests {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let network = Network::from(&connection);
         assert_eq!(num_nodes, network.spanning_tree.deref().borrow().num_nodes());
+    }
+
+    #[rstest]
+    #[case("data/tests/LoadFromDB/onelink.db", 1, 2, 0)]
+    #[case("data/tests/LoadFromDB/twolinks.db", 2, 3, 1)]
+    fn test_find_exit(#[case] dbfile:&str, #[case] from_id:u32, #[case] to_id:u32, #[case]exit_index:usize) {
+        let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
+        let network = Network::from(&connection);
+        let from = &network.get_junc(from_id).borrow().clone();
+        let to = &network.get_junc(to_id).borrow().clone();
+        let actual = network.find_exit(from, to);
+        assert_eq!(exit_index, actual);
     }
 }
