@@ -837,8 +837,7 @@ impl<'a> Network {
 
     pub fn find_exit_by_heading(&self, to: &Junction, arrival_exit: usize, exit_heading: u32) -> usize {
         let mut exit_index = arrival_exit;
-        let mut i= 0;
-        for i in 0..self.links.len() {
+        for _ in 0..self.links.len() {
             let exit = &to.links[exit_index];
             if exit.borrow().exit == exit_heading {
                 return exit_index;
