@@ -835,6 +835,20 @@ impl<'a> Network {
         network
     }
 
+    pub fn find_exit_by_heading(&self, to: &Junction, arrival_exit: usize, exit_heading: u32) -> usize {
+        let mut exit_index = arrival_exit;
+        let mut i= 0;
+        for i in 0..self.links.len() {
+            let exit = &to.links[exit_index];
+            if exit.borrow().exit == exit_heading {
+                return exit_index;
+            }
+            exit_index = (exit_index+1) % self.links.len();
+        }
+
+        return exit_index;
+    }
+
     pub fn find_exit(&self, from:&Junction, to:&Junction) -> usize {
         // let from = from.upgrade().unwrap().clone().borrow();
         // let to = to.upgrade().unwrap().clone().borrow();
@@ -1200,7 +1214,7 @@ impl<'a> JunctionGateway<'a> {
     }
 
     pub fn find_connections(&self) -> Result<Vec<(u32,u16,u32)>, Error> {
-        let mut statement = self.connection.prepare("SELECT * FROM junctions_links;");
+        let mut statement = self.connection.prepare("SELECT * FROM junctions_links ORDER BY junc_id, exit;");
         if let  Err(e) = statement {
             return Err(e);
         }
@@ -1486,6 +1500,20 @@ mod tests {
         let from = &network.get_junc(from_id).borrow().clone();
         let to = &network.get_junc(to_id).borrow().clone();
         let actual = network.find_exit(from, to);
+        assert_eq!(exit_index, actual);
+    }
+
+    #[rstest]
+    #[case("data/tests/LoadFromDB/twolinks.db", 2, 1, 0, 0)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 2, 0, 0)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 2, 90, 1)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 3, 270, 3)]
+    fn test_find_exit_by_heading(#[case] dbfile:&str, #[case] to_id:u32, #[case] arrival_exit: usize, #[case] exit_heading:u32, #[case] exit_index:usize) {
+        let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
+        let network = Network::from(&connection);
+        let to = &network.get_junc(to_id).borrow().clone();
+
+        let actual = network.find_exit_by_heading(to, arrival_exit, exit_heading);
         assert_eq!(exit_index, actual);
     }
 }
