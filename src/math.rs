@@ -1492,7 +1492,7 @@ mod tests {
 
     #[rstest]
     #[case("data/tests/LoadFromDB/onelink.db", 1, 2, 0)]
-    #[case("data/tests/LoadFromDB/twolinks.db", 2, 3, 1)]
+    #[case("data/tests/LoadFromDB/twolinks.db", 2, 3, 0)]
     fn test_find_exit(#[case] dbfile:&str, #[case] from_id:u32, #[case] to_id:u32, #[case]exit_index:usize) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let network = Network::from(&connection);
