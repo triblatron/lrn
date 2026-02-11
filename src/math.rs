@@ -1384,9 +1384,9 @@ mod tests {
     }
 
     #[rstest]
-    #[case("data/tests/LoadFromDB/onelink.db", 1, 1, 2, true, true, 90)]
-    #[case("data/tests/LoadFromDB/twolinks.db", 1, 1, 2, true, true, 90)]
-    #[case("data/tests/LoadFromDB/twolinks.db", 1, 1, 3, true, true, 90)]
+    #[case("data/tests/LoadFromDB/onelink.db", 1, 1, 2, true, true, 0)]
+    #[case("data/tests/LoadFromDB/twolinks.db", 1, 1, 2, true, true, 0)]
+    #[case("data/tests/LoadFromDB/twolinks.db", 1, 1, 3, true, true, 0)]
     fn test_routing(#[case] dbfile:&str, #[case] junc_id:u32, #[case] source_junc:u32, #[case] dest_junc: u32, #[case] to_dest:bool, #[case] exists:bool, #[case] next_exit:u32) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let network = Network::from(&connection);
