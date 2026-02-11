@@ -7,6 +7,7 @@ A toy road network in Rust as a vehicle for learning and trying out ideas.
 * Road network with nodes and links
 * Configuration from a sqlite database using rusqlite
 * Depth-first traversal with callbacks for nodes and links
+* Building of a spanning tree to help with building routing information
 * Building of routing information at each junction
 * Parsing of high-level routes such as "1 -1.825 200.0 Relative:Straight Count:1" which means "start at link 1, offset -1.825, distance 200.0, go straight ahead at the junction"
 * Parsing of relative (Straight, Left, Right), exit (u8), compass (North, NorthEast, ...), heading (u32) turns.
@@ -21,4 +22,3 @@ A toy road network in Rust as a vehicle for learning and trying out ideas.
 * Evaluating a route at a junction to determine which exit to take
   * Map relative turn to a heading based on available exits
   * Map compass and heading to nearest exit based on heading of link leading from it
-
