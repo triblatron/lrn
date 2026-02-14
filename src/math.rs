@@ -1584,6 +1584,7 @@ mod tests {
     #[case("data/tests/LoadFromDB/twolinks.db", 2, 0, 0)]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, 0, 0)]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, 90, 1)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 180, 2)]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, 270, 3)]
     fn test_find_exit_by_heading(#[case] dbfile:&str, #[case] to_id:u32, #[case] exit_heading:u32, #[case] exit_index:usize) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
@@ -1618,6 +1619,7 @@ mod tests {
     }
 
     #[rstest]
+    #[case("data/tests/LoadFromDB/twolinks.db", 2, CompassDirection::North, 0)]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, CompassDirection::North, 0)]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, CompassDirection::NorthEast, 3)]
     // Because we start at exit 0, North and iterate CCW round the exits.
@@ -1635,6 +1637,7 @@ mod tests {
     }
 
     #[rstest]
+    #[case("data/tests/LoadFromDB/twolinks.db", 2, 1, 1, 0)]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, 2, 1, 1)]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, 2, 2, 0)]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, 3, 2, 1)]
