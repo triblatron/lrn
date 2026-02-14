@@ -384,6 +384,35 @@ impl Junction {
         closest_index
     }
 
+    pub fn find_exit_from_heading(&self, heading: f64) -> usize {
+        let mut closest_delta = f64::MAX;
+        let mut exit_index:usize = 0;
+
+        for i in 0..self.links.len() {
+            let exit = self.links[i].borrow().exit;
+            let delta = f64::abs(exit as f64 - heading);
+            if delta < closest_delta {
+                closest_delta = delta;
+                exit_index = i;
+            }
+        }
+        exit_index
+    }
+
+    pub fn find_exit_from_compass(&self, dir: CompassDirection) -> usize {
+        let heading:u32 = match(dir) {
+            CompassDirection::North => 0,
+            CompassDirection::NorthEast => 315,
+            CompassDirection::East => 270,
+            CompassDirection::SouthEast => 270-45,
+            CompassDirection::South => 180,
+            CompassDirection::SouthWest => 180 - 45,
+            CompassDirection::West => 90,
+            CompassDirection::NorthWest => 45
+        };
+        self.find_exit_from_heading(heading as f64)
+    }
+
     // fn build_routes(&self, network:& Network, routing:&mut Routing) -> () {
     //     // Build immediately accessible hops
     //     // for exit in &self.outgoing {
@@ -1560,5 +1589,18 @@ mod tests {
         let network = Network::from(&connection);
         let junc = &network.get_junc(junc_id).borrow().clone();
         assert_eq!(exit_index, junc.find_entry(heading))
+    }
+
+    #[rstest]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, CompassDirection::North, 0)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, CompassDirection::East, 3)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, CompassDirection::West, 1)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, CompassDirection::South, 2)]
+    #[case("data/tests/LoadFromDB/yjunction.db", 2, CompassDirection::NorthEast, 2)]
+    fn test_find_exit_from_compass(#[case] dbfile: &str, #[case] junc_id:u32, #[case] dir:CompassDirection, #[case] exit_index:usize) {
+        let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
+        let network = Network::from(&connection);
+        let junc = &network.get_junc(junc_id).borrow().clone();
+        assert_eq!(exit_index, junc.find_exit_from_compass(dir));
     }
 }
