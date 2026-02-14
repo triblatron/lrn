@@ -1593,10 +1593,14 @@ mod tests {
 
     #[rstest]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, CompassDirection::North, 0)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, CompassDirection::NorthEast, 3)]
+    // Because we start at exit 0, North and iterate CCW round the exits.
     #[case("data/tests/LoadFromDB/crossroads.db", 2, CompassDirection::East, 3)]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, CompassDirection::West, 1)]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, CompassDirection::South, 2)]
+    #[case("data/tests/LoadFromDB/yjunction.db", 2, CompassDirection::North, 0)]
     #[case("data/tests/LoadFromDB/yjunction.db", 2, CompassDirection::NorthEast, 2)]
+    #[case("data/tests/LoadFromDB/yjunction.db", 2, CompassDirection::East, 2)]
     fn test_find_exit_from_compass(#[case] dbfile: &str, #[case] junc_id:u32, #[case] dir:CompassDirection, #[case] exit_index:usize) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let network = Network::from(&connection);
