@@ -369,6 +369,20 @@ impl Junction {
         }
     }
 
+    pub fn find_entry(&self, heading: f64) -> usize {
+        let reciprocal_heading = find_reciprocal_heading(heading);
+        let mut  closest_index = 0;
+        let mut closest_delta = f64::MAX;
+        for i in 0..self.links.len() {
+            let exit = self.links[i].borrow().exit;
+            let delta = f64::abs(exit as f64 - reciprocal_heading);
+            if delta < closest_delta {
+                closest_delta = delta;
+                closest_index = i;
+            }
+        }
+        closest_index
+    }
 
     // fn build_routes(&self, network:& Network, routing:&mut Routing) -> () {
     //     // Build immediately accessible hops
@@ -1532,5 +1546,17 @@ mod tests {
     #[case(270.0, 90.0)]
     fn test_find_reciprocal_heading(#[case] heading:f64, #[case] reciprocal:f64) {
         assert_eq!(reciprocal, find_reciprocal_heading(heading));
+    }
+
+    #[rstest]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 0.0, 2)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 180.0, 0)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 270.0, 1)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 90.0, 3)]
+    fn test_find_closest_entry(#[case] dbfile: &str, #[case] junc_id:u32, #[case] heading: f64, #[case] exit_index:usize) {
+        let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
+        let network = Network::from(&connection);
+        let junc = &network.get_junc(junc_id).borrow().clone();
+        assert_eq!(exit_index, junc.find_entry(heading))
     }
 }
