@@ -904,8 +904,8 @@ impl<'a> Network {
         network
     }
 
-    pub fn find_exit_by_heading(&self, to: &Junction, arrival_exit: usize, exit_heading: u32) -> usize {
-        let mut exit_index = arrival_exit;
+    pub fn find_exit_by_heading(&self, to: &Junction, exit_heading: u32) -> usize {
+        let mut exit_index = 0;
         for _ in 0..self.links.len() {
             let exit = &to.links[exit_index];
             if exit.borrow().exit == exit_heading {
@@ -1581,16 +1581,16 @@ mod tests {
     }
 
     #[rstest]
-    #[case("data/tests/LoadFromDB/twolinks.db", 2, 1, 0, 0)]
-    #[case("data/tests/LoadFromDB/crossroads.db", 2, 2, 0, 0)]
-    #[case("data/tests/LoadFromDB/crossroads.db", 2, 2, 90, 1)]
-    #[case("data/tests/LoadFromDB/crossroads.db", 2, 3, 270, 3)]
-    fn test_find_exit_by_heading(#[case] dbfile:&str, #[case] to_id:u32, #[case] arrival_exit: usize, #[case] exit_heading:u32, #[case] exit_index:usize) {
+    #[case("data/tests/LoadFromDB/twolinks.db", 2, 0, 0)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 0, 0)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 90, 1)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 270, 3)]
+    fn test_find_exit_by_heading(#[case] dbfile:&str, #[case] to_id:u32, #[case] exit_heading:u32, #[case] exit_index:usize) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let network = Network::from(&connection);
         let to = &network.get_junc(to_id).borrow().clone();
 
-        let actual = network.find_exit_by_heading(to, arrival_exit, exit_heading);
+        let actual = network.find_exit_by_heading(to, exit_heading);
         assert_eq!(exit_index, actual);
     }
 
