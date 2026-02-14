@@ -1301,7 +1301,7 @@ impl<'a> SegmentGateway<'a> {
 
 pub fn find_reciprocal_heading(heading:f64) -> f64 {
     let mut reciprocal_heading:f64 = heading + 180.0;
-    while (reciprocal_heading >= 360.0) {
+    while reciprocal_heading >= 360.0 {
         reciprocal_heading -= 360.0;
     }
     reciprocal_heading
@@ -1550,6 +1550,8 @@ mod tests {
 
     #[rstest]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, 0.0, 2)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 10.0, 2)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 45.0, 2)]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, 180.0, 0)]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, 270.0, 1)]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, 90.0, 3)]
