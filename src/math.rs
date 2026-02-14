@@ -408,6 +408,23 @@ impl Junction {
         exit_index as usize
     }
 
+    pub fn find_exit_from_turn_direction(&self, entry_index:usize, turn_dir: TurnDirection) -> usize {
+        let entry = find_reciprocal_heading(self.links[entry_index].borrow().exit as f64);
+        let mut heading = match (turn_dir) {
+            TurnDirection::Straight => entry,
+            TurnDirection::Left => entry + 90.0,
+            TurnDirection::Right => entry - 90.0,
+            TurnDirection::UTurn => entry + 180.0
+        };
+        while heading>=360.0 {
+            heading -= 360.0;
+        }
+        while heading < 0.0 {
+            heading += 360.0;
+        }
+
+        self.find_exit_from_heading(heading as f64)
+    }
     pub fn find_exit_from_compass(&self, dir: CompassDirection) -> usize {
         let heading:u32 = match(dir) {
             CompassDirection::North => 0,
@@ -1628,5 +1645,20 @@ mod tests {
         let network = Network::from(&connection);
         let junc = &network.get_junc(junc_id).borrow().clone();
         assert_eq!(exit_index, junc.find_relative_exit(entry_index, relative_exit));
+    }
+
+    #[rstest]
+    #[case("data/tests/LoadFromDB/twolinks.db", 2, 1, TurnDirection::Straight, 0)]
+    #[case("data/tests/LoadFromDB/twolinks.db", 2, 0, TurnDirection::Straight, 1)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 2, TurnDirection::Straight, 0)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 2, TurnDirection::Left, 1)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 0, TurnDirection::Left, 3)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 1, TurnDirection::Straight, 3)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 3, TurnDirection::Right, 0)]
+    fn test_find_exit_from_turn_direction(#[case] dbfile:&str, #[case] junc_id:u32, #[case] entry_index:usize, #[case] turn_dir:TurnDirection, #[case] exit_index:usize) {
+        let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
+        let network = Network::from(&connection);
+        let junc = &network.get_junc(junc_id).borrow().clone();
+        assert_eq!(exit_index, junc.find_exit_from_turn_direction(entry_index, turn_dir));
     }
 }
