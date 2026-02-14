@@ -399,6 +399,15 @@ impl Junction {
         exit_index
     }
 
+    pub fn find_relative_exit(&self, entry_index:usize, relative_exit:usize) -> usize {
+
+        let mut exit_index:i32 = (entry_index as i32 - relative_exit as i32) % self.links.len() as i32;
+        while exit_index<0 {
+            exit_index += self.links.len() as i32;
+        }
+        exit_index as usize
+    }
+
     pub fn find_exit_from_compass(&self, dir: CompassDirection) -> usize {
         let heading:u32 = match(dir) {
             CompassDirection::North => 0,
@@ -1606,5 +1615,18 @@ mod tests {
         let network = Network::from(&connection);
         let junc = &network.get_junc(junc_id).borrow().clone();
         assert_eq!(exit_index, junc.find_exit_from_compass(dir));
+    }
+
+    #[rstest]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 2, 1, 1)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 2, 2, 0)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 3, 2, 1)]
+    #[case("data/tests/LoadFromDB/yjunction.db", 2, 1, 1, 0)]
+    #[case("data/tests/LoadFromDB/yjunction.db", 2, 1, 2, 2)]
+    fn test_relative_exit(#[case] dbfile:&str, #[case] junc_id:u32, #[case] entry_index:usize, #[case] relative_exit:usize, #[case] exit_index:usize) {
+        let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
+        let network = Network::from(&connection);
+        let junc = &network.get_junc(junc_id).borrow().clone();
+        assert_eq!(exit_index, junc.find_relative_exit(entry_index, relative_exit));
     }
 }
