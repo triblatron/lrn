@@ -1655,6 +1655,10 @@ mod tests {
     #[case("data/tests/LoadFromDB/crossroads.db", 2, 0, TurnDirection::Left, 3)]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, 1, TurnDirection::Straight, 3)]
     #[case("data/tests/LoadFromDB/crossroads.db", 2, 3, TurnDirection::Right, 0)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 2, TurnDirection::UTurn, 2)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 1, TurnDirection::UTurn, 1)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 0, TurnDirection::UTurn, 0)]
+    #[case("data/tests/LoadFromDB/crossroads.db", 2, 3, TurnDirection::UTurn, 3)]
     fn test_find_exit_from_turn_direction(#[case] dbfile:&str, #[case] junc_id:u32, #[case] entry_index:usize, #[case] turn_dir:TurnDirection, #[case] exit_index:usize) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let network = Network::from(&connection);
