@@ -1284,6 +1284,15 @@ impl<'a> SegmentGateway<'a> {
         Ok(segments)
     }
 }
+
+pub fn find_reciprocal_heading(heading:f64) -> f64 {
+    let mut reciprocal_heading:f64 = heading + 180.0;
+    while (reciprocal_heading >= 360.0) {
+        reciprocal_heading -= 360.0;
+    }
+    reciprocal_heading
+}
+
 #[cfg(test)]
 mod tests {
     use std::ops::Deref;
@@ -1514,5 +1523,14 @@ mod tests {
 
         let actual = network.find_exit_by_heading(to, arrival_exit, exit_heading);
         assert_eq!(exit_index, actual);
+    }
+
+    #[rstest]
+    #[case(0.0, 180.0)]
+    #[case(90.0, 270.0)]
+    #[case(180.0, 0.0)]
+    #[case(270.0, 90.0)]
+    fn test_find_reciprocal_heading(#[case] heading:f64, #[case] reciprocal:f64) {
+        assert_eq!(reciprocal, find_reciprocal_heading(heading));
     }
 }
