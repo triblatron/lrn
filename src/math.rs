@@ -531,7 +531,7 @@ impl<'a> Link {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum TurnDirection {
     Left,
     Right,
@@ -937,12 +937,46 @@ impl<'a> Network {
         return usize::max_value();
     }
 
-fn dummy(&self, junc:&Junction, link:&Link, exit:u32, dest_junc:u32) -> () {
+    fn dummy(&self, junc:&Junction, link:&Link, exit:u32, dest_junc:u32) -> () {
         println!("{} {} {} {}", junc.id, link.id, exit, dest_junc);
     }
 
-    fn build_routes_for_junction(&self, _:&Junction) -> () {
+    pub fn evaluate_route(&self, route:&Route) -> Vec<(u32, usize)> {
+        let mut v = Vec::new();
+        let mut pos = LogicalCoord::empty();
+        pos.offset = route.offset;
+        pos.distance = route.distance;
+        let mut link = self.get_link(route.start_link);
+        for i in 0..route.patterns.len() {
+            match route.patterns[i].count {
+                TurnMultiplicity::Count(count) => {
+                    for j in 0..count {
 
+                        if let Some(destination) = link.destination {
+                            let destination = self.get_junc(destination);
+                            let incoming_heading = 0.0;
+                            let entry = destination.borrow().find_entry(incoming_heading);
+                            let mut exit_index = 0;
+                            match &route.patterns[i].turn {
+                                Turn::Relative(dir) => {
+                                    exit_index = destination.borrow().find_exit_from_turn_direction(entry, *dir);
+                                }
+                                _ => {
+                                    // Do nothing yet.
+                                }
+                            }
+                            v.push((destination.borrow().id, exit_index));
+                            let exit = destination.borrow().links[exit_index].clone();
+                            link = self.get_link(exit.borrow().link_id);
+                        }
+                    }
+                }
+                _ => {
+                    // Do nothing yet.
+                }
+            }
+        }
+        v
     }
 
     fn build_routes(&mut self) {
@@ -1528,6 +1562,16 @@ mod tests {
         assert_eq!(route, actual);
     }
 
+    #[rstest]
+    #[case("data/tests/LoadFromDB/twolinks.db", "1 -1.825 200.0 Relative:Straight Count:1", vec![(2, 0)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Straight Count:2", vec![(2, 0), (3,0)])]
+    fn test_evaluate_route(#[case] dbfile: &str, #[case] input: &str, #[case] expected:Vec<(u32, usize)>) {
+        let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
+        let network = Network::from(&connection);
+        let route = Route::parse(input);
+        let actual = network.evaluate_route(&route);
+        assert_eq!(expected, actual);
+    }
     #[rstest]
     #[case("Relative:Straight", Turn::Relative(TurnDirection::Straight))]
     #[case("Compass:North", Turn::Compass(CompassDirection::North))]
