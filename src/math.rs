@@ -542,7 +542,7 @@ pub enum TurnDirection {
 }
 
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum CompassDirection {
     North,
     NorthEast,
@@ -949,6 +949,7 @@ impl<'a> Network {
         pos.offset = route.offset;
         pos.distance = route.distance;
         let mut link = self.get_link(route.start_link);
+        let mut trav_dir = 1;
         for i in 0..route.patterns.len() {
             let mut num_turns:u32 = u32::MAX;
             match route.patterns[i].count {
@@ -962,23 +963,43 @@ impl<'a> Network {
             }
             let mut turn_num = 0;
             loop {
-                if let Some(destination) = link.destination {
-                    let destination = self.get_junc(destination);
+                let mut junc = link.destination;
+                if trav_dir == -1 {
+                    junc = link.origin;
+                }
+                if let Some(upcoming_junc) = junc {
+                    let upcoming_junc = self.get_junc(upcoming_junc);
                     let incoming_heading = 0.0;
-                    let entry = destination.borrow().find_entry(incoming_heading);
-                    let mut exit_index = 0;
+                    let entry = upcoming_junc.borrow().find_entry(incoming_heading);
+                    let mut exit_index = usize::MAX;
                     match &route.patterns[i].turn {
                         Turn::Relative(dir) => {
-                            exit_index = destination.borrow().find_exit_from_turn_direction(entry, *dir);
+                            exit_index = upcoming_junc.borrow().find_exit_from_turn_direction(entry, *dir);
+                        }
+                        Turn::Compass(dir) => {
+                            exit_index = upcoming_junc.borrow().find_exit_from_compass(*dir);
+                        }
+                        Turn::Exit(relative_exit) => {
+                            exit_index = upcoming_junc.borrow().find_relative_exit(entry, *relative_exit as usize)
                         }
                         _ => {
                             // Do nothing yet.
                         }
                     }
                     if exit_index != usize::MAX {
-                        v.push((destination.borrow().id, exit_index));
-                        let exit = destination.borrow().links[exit_index].clone();
+                        v.push((upcoming_junc.borrow().id, exit_index));
+                        let exit = upcoming_junc.borrow().links[exit_index].clone();
                         link = self.get_link(exit.borrow().link_id);
+                        if let Some(origin) = link.origin {
+                            if origin == upcoming_junc.borrow().id {
+                                trav_dir = 1;
+                            }
+                        }
+                        if let Some(destination) = link.destination {
+                            if destination == upcoming_junc.borrow().id {
+                                trav_dir = -1;
+                            }
+                        }
                     }
                     else {
                         break;
@@ -1589,9 +1610,20 @@ mod tests {
 
     #[rstest]
     #[case("data/tests/LoadFromDB/twolinks.db", "1 -1.825 200.0 Relative:Straight Count:1", vec![(2, 0)])]
+    #[case("data/tests/LoadFromDB/twolinks.db", "1 -1.825 200.0 Relative:Straight Count:1", vec![(2, 0)])]
     #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Straight Count:2", vec![(2, 0), (3,0)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Straight Always", vec![(2, 0), (3,0)])]
     #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Left Count:1", vec![(2, 1)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Right Count:1", vec![(2, 3)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:UTurn Count:1", vec![(2, 2)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Straight Always", vec![(2, 0), (3,0)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Compass:North Always", vec![(2, 0), (3,0)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Compass:West Always", vec![(2, 1)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Compass:East Always", vec![(2, 3)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Compass:South Always", vec![(2, 2)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Left Count:1", vec![(2, 1)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Left Always", vec![(2, 1)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Exit:2 Count:1", vec![(2, 0)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Exit:1 Count:1", vec![(2, 1)])]
     fn test_evaluate_route(#[case] dbfile: &str, #[case] input: &str, #[case] expected:Vec<(u32, usize)>) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let network = Network::from(&connection);
@@ -1599,7 +1631,7 @@ mod tests {
         let actual = network.evaluate_route(&route);
         assert_eq!(expected, actual);
     }
-    
+
     #[rstest]
     #[case("Relative:Straight", Turn::Relative(TurnDirection::Straight))]
     #[case("Compass:North", Turn::Compass(CompassDirection::North))]
