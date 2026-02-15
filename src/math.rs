@@ -678,6 +678,7 @@ pub struct Route {
     start_link:u16,
     offset:f64,
     distance:f64,
+    trav_dir:i32,
     patterns:Vec<TurningPattern>
 }
 
@@ -687,6 +688,7 @@ pub enum RouteParsing {
     ParsingSpace,
     ParsingOffset,
     ParsingDistance,
+    ParsingTravDir,
     ParsingTurnPattern,
     ParsingFinished
 }
@@ -696,6 +698,7 @@ impl Route {
             start_link:0,
             offset:0.0,
             distance:0.0,
+            trav_dir:1,
             patterns:vec![]
         }
     }
@@ -747,6 +750,17 @@ impl Route {
                     }
                     else {
                         retval.distance = input[start..=end].trim_start().parse::<f64>().unwrap_or(0.0);
+                        start = end+2;
+                        state = RouteParsing::ParsingSpace;
+                        next_state = RouteParsing::ParsingTravDir;
+                    }
+                }
+                RouteParsing::ParsingTravDir => {
+                    if !c.is_whitespace() {
+                        end+=1;
+                    }
+                    else {
+                        retval.trav_dir = input[start..=end].trim_start().parse::<i32>().unwrap_or(0);
                         start = end+2;
                         state = RouteParsing::ParsingSpace;
                         next_state = RouteParsing::ParsingTurnPattern;
@@ -949,7 +963,7 @@ impl<'a> Network {
         pos.offset = route.offset;
         pos.distance = route.distance;
         let mut link = self.get_link(route.start_link);
-        let mut trav_dir = 1;
+        let mut trav_dir = route.trav_dir;
         for i in 0..route.patterns.len() {
             let mut num_turns:u32 = u32::MAX;
             match route.patterns[i].count {
@@ -1595,40 +1609,41 @@ mod tests {
     }
 
     #[rstest]
-    #[case("1 -1.825 200.0", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
-    #[case(" 1  -1.825  200.0", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
-    #[case("1 -1.825 200.0 Relative:Straight Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
-    #[case("1 -1.825 200.0 Relative:Straight Count:1 Compass:North Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Compass(CompassDirection::North), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
-    #[case("1 -1.825 200.0 Relative:Straight Count:1 Exit:2 Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Exit(2), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
-    #[case("1 -1.825 200.0 Relative:Straight Count:1 Heading:90 Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Heading(90), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
-    #[case("1 -1.825 200.0 Relative:Straight Always", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Always } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
-    #[case("1 -1.825 200.0 Relative:Straight Count:1 Relative:Right Count:1", Route {start_link:1, offset:-1.825, distance:200.0, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Relative(TurnDirection::Right), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case("1 -1.825 200.0 1", Route {start_link:1, offset:-1.825, distance:200.0, trav_dir:1, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case(" 1  -1.825  200.0 1", Route {start_link:1, offset:-1.825, distance:200.0, trav_dir:1, patterns:vec![]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case("1 -1.825 200.0 1 Relative:Straight Count:1", Route {start_link:1, offset:-1.825, distance:200.0, trav_dir:1, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case("1 -1.825 200.0 1 Relative:Straight Count:1 Compass:North Count:1", Route {start_link:1, offset:-1.825, distance:200.0, trav_dir:1, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Compass(CompassDirection::North), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case("1 -1.825 200.0 1 Relative:Straight Count:1 Exit:2 Count:1", Route {start_link:1, offset:-1.825, distance:200.0, trav_dir:1, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Exit(2), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case("1 -1.825 200.0 1 Relative:Straight Count:1 Heading:90 Count:1", Route {start_link:1, offset:-1.825, distance:200.0, trav_dir:1, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Heading(90), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case("1 -1.825 200.0 1 Relative:Straight Always", Route {start_link:1, offset:-1.825, distance:200.0, trav_dir:1, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Always } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
+    #[case("1 -1.825 200.0 1 Relative:Straight Count:1 Relative:Right Count:1", Route {start_link:1, offset:-1.825, distance:200.0, trav_dir:1, patterns:vec![TurningPattern { turn:Turn::Relative(TurnDirection::Straight), count:TurnMultiplicity::Count(1) }, TurningPattern { turn:Turn::Relative(TurnDirection::Right), count:TurnMultiplicity::Count(1) } ]})] //TurningPattern {turn:Turn::Relative(TurnDirection::STRAIGHT), count:TurnMultiplicity::Once}] })]
     fn test_parse_route(#[case] input: &str, #[case] route:Route) {
         let actual = Route::parse(input);
         assert_eq!(route, actual);
     }
 
     #[rstest]
-    #[case("data/tests/LoadFromDB/twolinks.db", "1 -1.825 200.0 Relative:Straight Count:1", vec![(2, 0)])]
-    #[case("data/tests/LoadFromDB/twolinks.db", "1 -1.825 200.0 Relative:Straight Count:1", vec![(2, 0)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Straight Count:2", vec![(2, 0), (3,0)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Left Count:1", vec![(2, 1)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Right Count:1", vec![(2, 3)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:UTurn Count:1", vec![(2, 2)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Straight Always", vec![(2, 0), (3,0)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Compass:North Always", vec![(2, 0), (3,0)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Compass:West Always", vec![(2, 1)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Compass:East Always", vec![(2, 3)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Compass:South Always", vec![(2, 2)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Left Count:1", vec![(2, 1)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Left Always", vec![(2, 1)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Exit:2 Count:1", vec![(2, 0)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Exit:1 Count:1", vec![(2, 1)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Heading:0 Count:1", vec![(2, 0)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Heading:90 Count:1", vec![(2, 1)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Heading:270 Count:1", vec![(2, 3)])]
-    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Heading:180 Count:1", vec![(2, 2)])]
-    #[case("data/tests/LoadFromDB/yjunction.db", "1 -1.825 200.0 Heading:315 Count:1", vec![(2, 2)])]
+    #[case("data/tests/LoadFromDB/twolinks.db", "1 -1.825 200.0 1 Relative:Straight Count:1", vec![(2, 0)])]
+    #[case("data/tests/LoadFromDB/twolinks.db", "1 -1.825 200.0 1 Relative:Straight Count:1", vec![(2, 0)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Relative:Straight Count:2", vec![(2, 0), (3,0)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Relative:Left Count:1", vec![(2, 1)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Relative:Right Count:1", vec![(2, 3)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Relative:UTurn Count:1", vec![(2, 2)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Relative:Straight Always", vec![(2, 0), (3,0)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Compass:North Always", vec![(2, 0), (3,0)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Compass:West Always", vec![(2, 1)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Compass:East Always", vec![(2, 3)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Compass:South Always", vec![(2, 2)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Relative:Left Count:1", vec![(2, 1)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Relative:Left Always", vec![(2, 1)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Exit:2 Count:1", vec![(2, 0)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Exit:1 Count:1", vec![(2, 1)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Heading:0 Count:1", vec![(2, 0)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Heading:90 Count:1", vec![(2, 1)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Heading:270 Count:1", vec![(2, 3)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Heading:180 Count:1", vec![(2, 2)])]
+    #[case("data/tests/LoadFromDB/yjunction.db", "1 -1.825 200.0 1 Heading:315 Count:1", vec![(2, 2)])]
+    #[case("data/tests/LoadFromDB/twolinks.db", "2 1.825 200.0 -1 Heading:180 Count:1", vec![(2, 1)])]
     fn test_evaluate_route(#[case] dbfile: &str, #[case] input: &str, #[case] expected:Vec<(u32, usize)>) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let network = Network::from(&connection);
