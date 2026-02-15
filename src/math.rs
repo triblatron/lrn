@@ -412,7 +412,7 @@ impl Junction {
 
     pub fn find_exit_from_turn_direction(&self, entry_index:usize, turn_dir: TurnDirection) -> usize {
         let entry = find_reciprocal_heading(self.links[entry_index].borrow().exit as f64);
-        let mut heading = match (turn_dir) {
+        let mut heading = match turn_dir {
             TurnDirection::Straight => entry,
             TurnDirection::Left => entry + 90.0,
             TurnDirection::Right => entry - 90.0,
@@ -981,6 +981,9 @@ impl<'a> Network {
                         }
                         Turn::Exit(relative_exit) => {
                             exit_index = upcoming_junc.borrow().find_relative_exit(entry, *relative_exit as usize)
+                        }
+                        Turn::Heading(heading) => {
+                            exit_index = upcoming_junc.borrow().find_exit_from_heading(*heading as f64)
                         }
                         _ => {
                             // Do nothing yet.
@@ -1624,6 +1627,11 @@ mod tests {
     #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Left Always", vec![(2, 1)])]
     #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Exit:2 Count:1", vec![(2, 0)])]
     #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Exit:1 Count:1", vec![(2, 1)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Heading:0 Count:1", vec![(2, 0)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Heading:90 Count:1", vec![(2, 1)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Heading:270 Count:1", vec![(2, 3)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Heading:180 Count:1", vec![(2, 2)])]
+    #[case("data/tests/LoadFromDB/yjunction.db", "1 -1.825 200.0 Heading:315 Count:1", vec![(2, 2)])]
     fn test_evaluate_route(#[case] dbfile: &str, #[case] input: &str, #[case] expected:Vec<(u32, usize)>) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let network = Network::from(&connection);
