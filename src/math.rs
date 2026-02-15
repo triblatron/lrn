@@ -985,9 +985,6 @@ impl<'a> Network {
                         Turn::Heading(heading) => {
                             exit_index = upcoming_junc.borrow().find_exit_from_heading(*heading as f64)
                         }
-                        _ => {
-                            // Do nothing yet.
-                        }
                     }
                     if exit_index != usize::MAX {
                         v.push((upcoming_junc.borrow().id, exit_index));
