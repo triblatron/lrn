@@ -386,12 +386,14 @@ impl Junction {
 
     pub fn find_exit_from_heading(&self, heading: f64) -> usize {
         let mut closest_delta = f64::MAX;
-        let mut exit_index:usize = 0;
-
+        let mut exit_index:usize = usize::MAX;
+        let heading_hemi = hemisphere(heading as u32);
         for i in 0..self.links.len() {
             let exit = self.links[i].borrow().exit;
             let delta = f64::abs(exit as f64 - heading);
-            if delta < closest_delta {
+            let exit_hemi = hemisphere(exit);
+
+            if delta < closest_delta && exit_hemi == heading_hemi {
                 closest_delta = delta;
                 exit_index = i;
             }
@@ -948,31 +950,43 @@ impl<'a> Network {
         pos.distance = route.distance;
         let mut link = self.get_link(route.start_link);
         for i in 0..route.patterns.len() {
+            let mut num_turns:u32 = u32::MAX;
             match route.patterns[i].count {
                 TurnMultiplicity::Count(count) => {
-                    for j in 0..count {
-
-                        if let Some(destination) = link.destination {
-                            let destination = self.get_junc(destination);
-                            let incoming_heading = 0.0;
-                            let entry = destination.borrow().find_entry(incoming_heading);
-                            let mut exit_index = 0;
-                            match &route.patterns[i].turn {
-                                Turn::Relative(dir) => {
-                                    exit_index = destination.borrow().find_exit_from_turn_direction(entry, *dir);
-                                }
-                                _ => {
-                                    // Do nothing yet.
-                                }
-                            }
-                            v.push((destination.borrow().id, exit_index));
-                            let exit = destination.borrow().links[exit_index].clone();
-                            link = self.get_link(exit.borrow().link_id);
-                        }
-                    }
+                    num_turns = count;
                 }
                 _ => {
                     // Do nothing yet.
+                }
+
+            }
+            let mut turn_num = 0;
+            loop {
+                if let Some(destination) = link.destination {
+                    let destination = self.get_junc(destination);
+                    let incoming_heading = 0.0;
+                    let entry = destination.borrow().find_entry(incoming_heading);
+                    let mut exit_index = 0;
+                    match &route.patterns[i].turn {
+                        Turn::Relative(dir) => {
+                            exit_index = destination.borrow().find_exit_from_turn_direction(entry, *dir);
+                        }
+                        _ => {
+                            // Do nothing yet.
+                        }
+                    }
+                    if exit_index != usize::MAX {
+                        v.push((destination.borrow().id, exit_index));
+                        let exit = destination.borrow().links[exit_index].clone();
+                        link = self.get_link(exit.borrow().link_id);
+                    }
+                    else {
+                        break;
+                    }
+                    turn_num += 1;
+                    if turn_num == num_turns {
+                        break;
+                    }
                 }
             }
         }
@@ -1396,6 +1410,17 @@ pub fn find_reciprocal_heading(heading:f64) -> f64 {
     reciprocal_heading
 }
 
+pub fn hemisphere(input:u32) -> u32 {
+    let mut angle = input;
+    while angle >= 360 {
+        angle -= 360;
+    }
+    if angle < 90 || (angle >= 270 && angle < 360) {
+        return 0;
+    }
+    1
+}
+
 #[cfg(test)]
 mod tests {
     use std::ops::Deref;
@@ -1565,6 +1590,8 @@ mod tests {
     #[rstest]
     #[case("data/tests/LoadFromDB/twolinks.db", "1 -1.825 200.0 Relative:Straight Count:1", vec![(2, 0)])]
     #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Straight Count:2", vec![(2, 0), (3,0)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Straight Always", vec![(2, 0), (3,0)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 Relative:Left Count:1", vec![(2, 1)])]
     fn test_evaluate_route(#[case] dbfile: &str, #[case] input: &str, #[case] expected:Vec<(u32, usize)>) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let network = Network::from(&connection);
@@ -1572,6 +1599,7 @@ mod tests {
         let actual = network.evaluate_route(&route);
         assert_eq!(expected, actual);
     }
+    
     #[rstest]
     #[case("Relative:Straight", Turn::Relative(TurnDirection::Straight))]
     #[case("Compass:North", Turn::Compass(CompassDirection::North))]
@@ -1713,5 +1741,17 @@ mod tests {
         let network = Network::from(&connection);
         let junc = &network.get_junc(junc_id).borrow().clone();
         assert_eq!(exit_index, junc.find_exit_from_turn_direction(entry_index, turn_dir));
+    }
+
+    #[rstest]
+    #[case(0, 0)]
+    #[case(45, 0)]
+    #[case(45, 0)]
+    #[case(180, 1)]
+    #[case(270, 0)]
+    #[case(360, 0)]
+    #[case(90, 1)]
+    fn test_hemisphere(#[case] angle: u32, #[case] hemi:u32) {
+        assert_eq!(hemi, hemisphere(angle))
     }
 }
