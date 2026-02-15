@@ -1644,6 +1644,10 @@ mod tests {
     #[case("data/tests/LoadFromDB/fivelinks.db", "1 -1.825 200.0 1 Heading:180 Count:1", vec![(2, 2)])]
     #[case("data/tests/LoadFromDB/yjunction.db", "1 -1.825 200.0 1 Heading:315 Count:1", vec![(2, 2)])]
     #[case("data/tests/LoadFromDB/twolinks.db", "2 1.825 200.0 -1 Heading:180 Count:1", vec![(2, 1)])]
+    #[case("data/tests/LoadFromDB/yjunction.db", "3 1.825 200.0 -1 Heading:180 Count:1", vec![(2, 1)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "3 1.825 200.0 -1 Heading:180 Count:2", vec![(3, 1), (2, 2)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "4 1.825 200.0 -1 Compass:North Always", vec![(2, 0), (3, 0)])]
+    #[case("data/tests/LoadFromDB/fivelinks.db", "4 1.825 200.0 -1 Heading:0 Always", vec![(2, 0), (3, 0)])]
     fn test_evaluate_route(#[case] dbfile: &str, #[case] input: &str, #[case] expected:Vec<(u32, usize)>) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let network = Network::from(&connection);
