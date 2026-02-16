@@ -1862,6 +1862,8 @@ mod tests {
     #[rstest]
     #[case("data/tests/LoadFromDB/onelink.db", 1, 0.0)]
     #[case("data/tests/LoadFromDB/yjunction.db", 3, 315.0)]
+    #[case("data/tests/LoadFromDB/fivelinks.db", 4, 90.0)]
+    #[case("data/tests/LoadFromDB/fivelinks.db", 5, 270.0)]
     fn test_first_segment_for_link(#[case] dbfile:&str, #[case] link_id:u16, #[case] heading:f64) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let network = Network::from(&connection);
@@ -1871,6 +1873,8 @@ mod tests {
     #[rstest]
     #[case("data/tests/LoadFromDB/onelink.db", 1, 0.0)]
     #[case("data/tests/LoadFromDB/yjunction.db", 3, 315.0)]
+    #[case("data/tests/LoadFromDB/fivelinks.db", 4, 90.0)]
+    #[case("data/tests/LoadFromDB/fivelinks.db", 5, 270.0)]
     fn test_last_segment_for_link(#[case] dbfile:&str, #[case] link_id:u16, #[case] heading:f64) {
         let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
         let network = Network::from(&connection);
