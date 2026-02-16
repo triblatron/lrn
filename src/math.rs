@@ -292,6 +292,19 @@ pub struct Segment {
 }
 
 impl Segment {
+    pub fn new() -> Segment {
+        Segment {
+            tile:0,
+            x:0.0,
+            y:0.0,
+            z:0.0,
+            h:0.0,
+            p:0.0,
+            r:0.0,
+            segment_type:SegmentType::Straight
+        }
+    }
+
     pub fn from_query(row:&Row) -> Segment {
         Segment {
             tile:row.get("tile_id").unwrap(),
@@ -920,6 +933,33 @@ impl<'a> Network {
         network
     }
 
+    pub fn first_segment_for_link(&self, link:&Link) -> Option<&Segment> {
+        for tile in &self.tiles {
+            if tile.link == link.id {
+                for segment in &self.segments {
+                    if segment.tile == tile.id {
+                        return Some(segment);
+                    }
+                }
+            }
+        }
+        return None;
+    }
+
+    pub fn last_segment_for_link(&self, link:&Link) -> Option<&Segment> {
+        let mut retval:Option<&Segment> = None;
+        for tile in &self.tiles {
+            if tile.link == link.id {
+                for segment in &self.segments {
+                    if segment.tile == tile.id {
+                        retval = Some(segment);
+                    }
+                }
+            }
+        }
+        retval
+    }
+
     pub fn find_exit_by_heading(&self, to: &Junction, exit_heading: u32) -> usize {
         let mut exit_index = 0;
         for _ in 0..self.links.len() {
@@ -978,12 +1018,20 @@ impl<'a> Network {
             let mut turn_num = 0;
             loop {
                 let mut junc = link.destination;
+                let mut incoming_heading = 0.0;
                 if trav_dir == -1 {
+                    if let Some(segment) = self.first_segment_for_link(link) {
+                        incoming_heading = find_reciprocal_heading(segment.h);
+                    }
                     junc = link.origin;
+                }
+                else {
+                    if let Some(segment) = self.last_segment_for_link(link) {
+                        incoming_heading = segment.h;
+                    }
                 }
                 if let Some(upcoming_junc) = junc {
                     let upcoming_junc = self.get_junc(upcoming_junc);
-                    let incoming_heading = 0.0;
                     let entry = upcoming_junc.borrow().find_entry(incoming_heading);
                     let mut exit_index = usize::MAX;
                     match &route.patterns[i].turn {
@@ -1809,5 +1857,23 @@ mod tests {
     #[case(90, 1)]
     fn test_hemisphere(#[case] angle: u32, #[case] hemi:u32) {
         assert_eq!(hemi, hemisphere(angle))
+    }
+
+    #[rstest]
+    #[case("data/tests/LoadFromDB/onelink.db", 1, 0.0)]
+    #[case("data/tests/LoadFromDB/yjunction.db", 3, 315.0)]
+    fn test_first_segment_for_link(#[case] dbfile:&str, #[case] link_id:u16, #[case] heading:f64) {
+        let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
+        let network = Network::from(&connection);
+        assert_eq!(heading, network.first_segment_for_link(network.get_link(link_id)).unwrap().h);
+    }
+
+    #[rstest]
+    #[case("data/tests/LoadFromDB/onelink.db", 1, 0.0)]
+    #[case("data/tests/LoadFromDB/yjunction.db", 3, 315.0)]
+    fn test_last_segment_for_link(#[case] dbfile:&str, #[case] link_id:u16, #[case] heading:f64) {
+        let connection = Connection::open(dbfile).unwrap_or_else(|e| panic!("failed to open {}: {}", dbfile, e));
+        let network = Network::from(&connection);
+        assert_eq!(heading, network.last_segment_for_link(network.get_link(link_id)).unwrap().h);
     }
 }
