@@ -441,7 +441,7 @@ impl Junction {
         self.find_exit_from_heading(heading as f64)
     }
     pub fn find_exit_from_compass(&self, dir: CompassDirection) -> usize {
-        let heading:u32 = match(dir) {
+        let heading:u32 = match dir {
             CompassDirection::North => 0,
             CompassDirection::NorthEast => 315,
             CompassDirection::East => 270,
@@ -576,7 +576,6 @@ pub enum Turn {
 }
 
 use std::str::FromStr;
-use rusqlite::fallible_iterator::FallibleIterator;
 
 impl FromStr for TurnMultiplicity {
     type Err = String;

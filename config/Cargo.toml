@@ -1,0 +1,8 @@
+[package]
+name = "config"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rstest = "0.18"
+mlua = {  version = "0.11.6" ,features = ["lua54", "vendored"] }
