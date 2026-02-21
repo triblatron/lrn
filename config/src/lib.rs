@@ -49,6 +49,10 @@ impl ConfigurationElement {
         None
     }
 
+    pub fn new(name:String, value:mlua::Value) -> Rc<RefCell<ConfigurationElement>> {
+        let this = ConfigurationElement{ name: name, value: value, parent:Weak::new(), children:Vec::new()};
+        Rc::new(RefCell::new(this))
+    }
     pub fn build_tree(lua: &Lua) -> Option<Rc<RefCell<ConfigurationElement>>> {
         let table:Result<mlua::Table,LuaError>  = lua.globals().get("root");
         let mut parent_stack:Vec<Rc<RefCell<ConfigurationElement>>> = vec![];
@@ -72,14 +76,16 @@ impl ConfigurationElement {
             }
             if key.is_string() {
                 if value.is_string() || value.is_integer() || value.is_number() || value.is_boolean() {
-                    let element = Rc::new(RefCell::new(ConfigurationElement { name:key.to_string().unwrap(), children : Vec::new(), parent : Weak::new(), value: value.clone() }));
+                    let element =  ConfigurationElement::new(key.to_string().unwrap(), value.clone());
 
-                    parent_stack.last_mut().unwrap().borrow_mut().add_child(element);
+                    let top = parent_stack.last().unwrap();
+                    top.borrow_mut().add_child(top, element);
                 }
                 else if value.is_table() {
-                    let child = Rc::new(RefCell::new(ConfigurationElement { name:key.to_string().unwrap(), children:Vec::new(), parent:Weak::new(), value: mlua::Value::Nil }));
+                    let child = ConfigurationElement::new(key.to_string().unwrap(), mlua::Value::Nil);
 
-                    parent_stack.last_mut().unwrap().borrow_mut().add_child(child.clone());
+                    let top  = parent_stack.last().unwrap();
+                    top.borrow_mut().add_child(top, child.clone());
                     parent_stack.push(child.clone());
                     Self::build_tree_helper(&lua, value.as_table().unwrap().clone(), parent_stack, level+1);
                 }
@@ -89,14 +95,15 @@ impl ConfigurationElement {
                     let mut name:String = String::from("[");
                     name.push_str(key.to_string().unwrap().as_str());
                     name.push_str("]");
-                    let element = Rc::new(RefCell::new(ConfigurationElement { name:name, children : Vec::new(), parent : Weak::new(), value: value.clone() }));
-
-                    parent_stack.last_mut().unwrap().borrow_mut().add_child(element);
+                    let child = ConfigurationElement::new(name, value.clone());
+                    let top  = parent_stack.last().unwrap();
+                    top.borrow_mut().add_child(top, child.clone());
                 }
                 else if value.is_table() {
-                    let child = Rc::new(RefCell::new(ConfigurationElement { name:key.to_string().unwrap(), children:Vec::new(), parent:Weak::new(), value: mlua::Value::Nil }));
+                    let child = ConfigurationElement::new(key.to_string().unwrap(),mlua::Value::Nil);
 
-                    parent_stack.last_mut().unwrap().borrow_mut().add_child(child.clone());
+                    let top  = parent_stack.last().unwrap();
+                    top.borrow_mut().add_child(top, child.clone());
                     parent_stack.push(child.clone());
                     Self::build_tree_helper(&lua, value.as_table().unwrap().clone(), parent_stack, level+1);
                 }
@@ -105,10 +112,26 @@ impl ConfigurationElement {
     }
 
     pub fn find_element(&self, path: &str) -> Option<Rc<RefCell<ConfigurationElement>>> {
-        if path.starts_with("$.") {
-            let relative_path = path.strip_prefix("$.").unwrap();
+        if path.starts_with("$") {
+            let relative_path = path.strip_prefix("$").unwrap();
 
-            return self.find_in_children(relative_path);
+            let self_rc = Rc::new(RefCell::new(self.clone()));
+            let mut root = Rc::downgrade(&self_rc);
+            let mut parent = root.clone();
+            while let Some(some_parent) = parent.upgrade() {
+                root = Rc::downgrade(&some_parent);
+                parent = some_parent.borrow().parent.clone();
+            }
+
+            let dot_pos = relative_path.find('.');
+
+            if let Some(pos) = dot_pos {
+
+                return root.upgrade().unwrap().borrow().find_element(&relative_path[pos+1..]);
+            }
+            else {
+                return Some(root.upgrade().unwrap());
+            }
         }
 
         return self.find_in_children(path);
@@ -121,7 +144,10 @@ impl ConfigurationElement {
         let dot_pos = path.find('.');
         if let Some(dot_pos) = dot_pos {
             for child in &self.children {
-                return child.borrow().find_in_children(&path[dot_pos+1..])
+                let candidate = child.borrow().find_in_children(&path[dot_pos+1..]);
+                if let Some(candidate) = candidate {
+                    return Some(candidate.clone());
+                }
             }
         }
         else {
@@ -134,9 +160,9 @@ impl ConfigurationElement {
         None
     }
 
-    pub fn add_child(&mut self, child:Rc<RefCell<ConfigurationElement>>) {
+    pub fn add_child(&mut self, self_rc:&Rc<RefCell<ConfigurationElement>>, child:Rc<RefCell<ConfigurationElement>>) {
+        child.deref().borrow_mut().parent = Rc::downgrade(&self_rc);
         self.children.push(child.clone());
-        child.deref().borrow_mut().parent = Rc::downgrade(&child);
     }
     pub fn get_value(&self) -> &mlua::Value {
         &self.value
@@ -147,6 +173,16 @@ impl ConfigurationElement {
 mod tests {
     use super::*;
     use rstest::rstest;
+
+    fn assert_comparison(value: VariantType, actual:&mlua::Value) {
+        match value {
+            VariantType::Nil => { assert!(actual.is_nil()); }
+            VariantType::Boolean(value) => assert_eq!(value, actual.as_boolean().unwrap()),
+            VariantType::Integer(value) => assert_eq!(value, actual.as_integer().unwrap()),
+            VariantType::Float(value) => assert_eq!(value, actual.as_number().unwrap()),
+            VariantType::String(value) => assert_eq!(value, *actual.as_string().unwrap().to_str().unwrap()),
+        }
+    }
     #[rstest]
     #[case("data/tests/ConfigurationElement/Empty.lua", "foo", false, VariantType::Nil)]
     #[case("data/tests/ConfigurationElement/OneElement.lua", "foo", true, VariantType::Boolean(true))]
@@ -165,14 +201,24 @@ mod tests {
         let actual = sut.unwrap().as_ref().borrow().find_element(path);
         assert_eq!(exists, actual.is_some());
         if let Some(actual) = actual {
-            match value {
-                VariantType::Nil => { assert!(actual.deref().borrow().get_value().is_nil()); }
-                VariantType::Boolean(value) => assert_eq!(value, actual.deref().borrow().get_value().as_boolean().unwrap()),
-                VariantType::Integer(value) => assert_eq!(value, actual.deref().borrow().get_value().as_integer().unwrap()),
-                VariantType::Float(value) => assert_eq!(value, actual.deref().borrow().get_value().as_number().unwrap()),
-                VariantType::String(value) => assert_eq!(value, *actual.deref().borrow().get_value().as_string().unwrap().to_str().unwrap()),
-            }
+            assert_comparison(value, actual.deref().borrow().get_value());
             //assert_eq!(value, *actual.unwrap().borrow().get_value());
         }
+    }
+
+    #[rstest]
+    #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "$", "$.baz", VariantType::String(String::from("wibble")))]
+    #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "foo.bar", "$.baz", VariantType::String(String::from("wibble")))]
+    fn test_find_element(#[case] filename:&str, #[case] path_to_location:&str, #[case] absolute_path:&str, #[case] value:VariantType) {
+        let lua = Lua::new();
+        let sut = ConfigurationElement::from_file(&lua, filename);
+        assert!(sut.is_some());
+        let sut = sut.unwrap();
+        let location = sut.as_ref().borrow().find_element(path_to_location);
+        assert!(location.is_some());
+        let location = location.unwrap();
+        let actual = location.as_ref().borrow().find_element(absolute_path);
+        assert!(actual.is_some());
+        assert_comparison(value, actual.unwrap().deref().borrow().get_value());
     }
 }
