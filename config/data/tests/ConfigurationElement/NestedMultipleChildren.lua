@@ -1,0 +1,9 @@
+root=
+{
+	qux=1,
+	foo=
+	{
+		bar=1.0,
+	},
+	baz="wibble",
+}
