@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::fmt::Display;
 use std::fs;
 use std::fs::exists;
 use std::ops::Deref;
@@ -83,6 +84,23 @@ impl ConfigurationElement {
                     Self::build_tree_helper(&lua, value.as_table().unwrap().clone(), parent_stack, level+1);
                 }
             }
+            else if key.is_integer() {
+                if value.is_string() || value.is_integer() || value.is_number() || value.is_boolean() {
+                    let mut name:String = String::from("[");
+                    name.push_str(key.to_string().unwrap().as_str());
+                    name.push_str("]");
+                    let element = Rc::new(RefCell::new(ConfigurationElement { name:name, children : Vec::new(), parent : Weak::new(), value: value.clone() }));
+
+                    parent_stack.last_mut().unwrap().borrow_mut().add_child(element);
+                }
+                else if value.is_table() {
+                    let child = Rc::new(RefCell::new(ConfigurationElement { name:key.to_string().unwrap(), children:Vec::new(), parent:Weak::new(), value: mlua::Value::Nil }));
+
+                    parent_stack.last_mut().unwrap().borrow_mut().add_child(child.clone());
+                    parent_stack.push(child.clone());
+                    Self::build_tree_helper(&lua, value.as_table().unwrap().clone(), parent_stack, level+1);
+                }
+            }
         }
     }
 
@@ -137,6 +155,9 @@ mod tests {
     #[case("data/tests/ConfigurationElement/NestedElement.lua", "$.foo.bar", true, VariantType::Float(1.0))]
     #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "baz", true, VariantType::String(String::from("wibble")))]
     #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "qux", true, VariantType::Integer(1))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[1]", true, VariantType::Boolean(true))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[2]", true, VariantType::Float(2.0))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[3]", true, VariantType::String(String::from("wibble")))]
     fn test_create_from_file(#[case] filename:&str, #[case] path:&str, #[case] exists : bool,  #[case] value:VariantType) {
         let lua = Lua::new();
         let sut = ConfigurationElement::from_file(&lua, filename);

@@ -1,0 +1,9 @@
+root=
+{
+	foo=
+	{
+		true,
+		2.0,
+		"wibble"
+	},
+}
