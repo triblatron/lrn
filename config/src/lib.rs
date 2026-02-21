@@ -30,7 +30,7 @@ impl ConfigurationElement {
             if let Ok(code) = code {
                 let chunk = lua.load(code);
                 let result = chunk.exec();
-                match (result) {
+                match result {
                     Ok(()) => {
                         return ConfigurationElement::build_tree(lua);
                     }
@@ -64,6 +64,16 @@ impl ConfigurationElement {
     }
 
     pub fn find_element(&self, path: &str) -> Option<Rc<RefCell<ConfigurationElement>>> {
+        if path.starts_with("$.") {
+            let relative_path = path.strip_prefix("$.").unwrap();
+
+            return self.find_in_children(relative_path);
+        }
+
+        return self.find_in_children(path);
+    }
+
+    pub fn find_in_children(&self, path: &str) -> Option<Rc<RefCell<ConfigurationElement>>> {
         for child in &self.children {
             if child.borrow().name == path {
                 return Some(child.clone());
@@ -71,7 +81,6 @@ impl ConfigurationElement {
         }
         None
     }
-
     pub fn add_child(&mut self, child:Rc<RefCell<ConfigurationElement>>) {
         self.children.push(child.clone());
         child.deref().borrow_mut().parent = Rc::downgrade(&child);
@@ -83,12 +92,12 @@ impl ConfigurationElement {
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Deref;
     use super::*;
     use rstest::rstest;
     #[rstest]
     #[case("data/tests/ConfigurationElement/Empty.lua", "foo", false, mlua::Value::Nil)]
     #[case("data/tests/ConfigurationElement/OneElement.lua", "foo", true, mlua::Value::Boolean(true))]
+    #[case("data/tests/ConfigurationElement/OneElement.lua", "$.foo", true, mlua::Value::Boolean(true))]
     fn test_create_from_file(#[case] filename:&str, #[case] path:&str, #[case] exists : bool,  #[case] value:mlua::Value) {
         let lua = Lua::new();
         let sut = ConfigurationElement::from_file(lua, filename);
