@@ -1,0 +1,4 @@
+root=
+{
+	foo = true,
+}
