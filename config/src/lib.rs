@@ -33,17 +33,7 @@ impl ConfigurationElement {
         if let Ok(_) = exists(filename) {
             let code = fs::read_to_string(filename);
             if let Ok(code) = code {
-                let chunk = lua.load(code);
-                let result = chunk.exec();
-                match result {
-                    Ok(()) => {
-                        return ConfigurationElement::build_tree(lua);
-                    }
-                    Err(e) => {
-                        eprintln!("Error loading configuration element: {}", e);
-
-                    }
-                }
+                return ConfigurationElement::from_string(lua, code.as_str());
             }
         }
         None
@@ -62,6 +52,7 @@ impl ConfigurationElement {
         }
         None
     }
+
     pub fn new(name:String, index:i64, value:mlua::Value) -> Rc<RefCell<ConfigurationElement>> {
         let this = ConfigurationElement{
             name,
@@ -72,6 +63,7 @@ impl ConfigurationElement {
         };
         Rc::new(RefCell::new(this))
     }
+    
     pub fn build_tree(lua: &Lua) -> Option<Rc<RefCell<ConfigurationElement>>> {
         let table:Result<mlua::Table,LuaError>  = lua.globals().get("root");
         let mut parent_stack:Vec<Rc<RefCell<ConfigurationElement>>> = vec![];
