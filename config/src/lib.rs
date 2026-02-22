@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::fmt::Display;
 use std::fs;
 use std::fs::exists;
 use std::ops::Deref;
@@ -56,9 +55,9 @@ impl ConfigurationElement {
     pub fn build_tree(lua: &Lua) -> Option<Rc<RefCell<ConfigurationElement>>> {
         let table:Result<mlua::Table,LuaError>  = lua.globals().get("root");
         let mut parent_stack:Vec<Rc<RefCell<ConfigurationElement>>> = vec![];
-        let mut parent = Rc::new(RefCell::new(ConfigurationElement{ name: String::from("root"), children: Vec::new(), parent : Weak::new(), value: mlua::Value::Nil }));
+        let parent = Rc::new(RefCell::new(ConfigurationElement{ name: String::from("root"), children: Vec::new(), parent : Weak::new(), value: mlua::Value::Nil }));
         parent_stack.push(parent.clone());
-        let mut level:u32 = 0;
+        let level:u32 = 0;
         if let Ok(table) = table {
             ConfigurationElement::build_tree_helper(lua, table, &mut parent_stack, level);
         }
@@ -186,6 +185,7 @@ mod tests {
     #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[2]", true, VariantType::Float(2.0))]
     #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[3]", true, VariantType::String(String::from("wibble")))]
     #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[4].bar", true, VariantType::Float(1.5))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "$.[1]", true, VariantType::Integer(2))]
     fn test_create_from_file(#[case] filename:&str, #[case] path:&str, #[case] exists : bool,  #[case] value:VariantType) {
         let lua = Lua::new();
         let sut = ConfigurationElement::from_file(&lua, filename);
