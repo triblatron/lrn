@@ -170,8 +170,7 @@ impl ConfigurationElement {
             }
             let relative_path = path.strip_prefix("$").unwrap();
 
-            let root_rc = root.upgrade();
-            if let Some(root_rc) = root_rc && path.len()>=4 && path[1..2].eq("[") {
+            if path.len()>=4 && path[1..2].eq("[") {
                 let array_path = &path[2..];
                 return self.find_in_array(0, array_path);
             }
