@@ -22,6 +22,7 @@ struct Variant {
 #[derive(Clone)]
 struct ConfigurationElement {
     name: String,
+    index: i64,
     children : Vec<Rc<RefCell<ConfigurationElement>>>,
     parent : Weak<RefCell<ConfigurationElement>>,
     value : mlua::Value,
@@ -48,14 +49,20 @@ impl ConfigurationElement {
         None
     }
 
-    pub fn new(name:String, value:mlua::Value) -> Rc<RefCell<ConfigurationElement>> {
-        let this = ConfigurationElement{ name: name, value: value, parent:Weak::new(), children:Vec::new()};
+    pub fn new(name:String, index:i64, value:mlua::Value) -> Rc<RefCell<ConfigurationElement>> {
+        let this = ConfigurationElement{
+            name,
+            index,
+            value,
+            parent:Weak::new(),
+            children:Vec::new()
+        };
         Rc::new(RefCell::new(this))
     }
     pub fn build_tree(lua: &Lua) -> Option<Rc<RefCell<ConfigurationElement>>> {
         let table:Result<mlua::Table,LuaError>  = lua.globals().get("root");
         let mut parent_stack:Vec<Rc<RefCell<ConfigurationElement>>> = vec![];
-        let parent = Rc::new(RefCell::new(ConfigurationElement{ name: String::from("root"), children: Vec::new(), parent : Weak::new(), value: mlua::Value::Nil }));
+        let parent = ConfigurationElement::new(String::from("root"), -1, mlua::Value::Nil);
         parent_stack.push(parent.clone());
         let level:u32 = 0;
         if let Ok(table) = table {
@@ -65,15 +72,15 @@ impl ConfigurationElement {
         return Some(parent);
     }
 
-    fn build_tree_element(lua: &Lua, name:String, value:mlua::Value, parent_stack:&mut Vec<Rc<RefCell<ConfigurationElement>>>, level:u32) -> () {
+    fn build_tree_element(lua: &Lua, name:String, index:i64, value:mlua::Value, parent_stack:&mut Vec<Rc<RefCell<ConfigurationElement>>>, level:u32) -> () {
         if value.is_string() || value.is_integer() || value.is_number() || value.is_boolean() {
-            let element =  ConfigurationElement::new(name, value.clone());
+            let element =  ConfigurationElement::new(name, index, value.clone());
 
             let top = parent_stack.last().unwrap();
             top.borrow_mut().add_child(top, element);
         }
         else if value.is_table() {
-            let child = ConfigurationElement::new(name, mlua::Value::Nil);
+            let child = ConfigurationElement::new(name, index, mlua::Value::Nil);
 
             let top  = parent_stack.last().unwrap();
             top.borrow_mut().add_child(top, child.clone());
@@ -89,13 +96,13 @@ impl ConfigurationElement {
                 parent_stack.pop();
             }
             if key.is_string() {
-                Self::build_tree_element(lua, key.to_string().unwrap(), value, parent_stack, level);
+                Self::build_tree_element(lua, key.to_string().unwrap(), -1, value, parent_stack, level);
             }
             else if key.is_integer() {
                 let mut name:String = String::from("[");
                 name.push_str(key.to_string().unwrap().as_str());
                 name.push_str("]");
-                Self::build_tree_element(lua, name, value, parent_stack, level);
+                Self::build_tree_element(lua, name, key.as_integer().unwrap(), value, parent_stack, level);
             }
         }
     }
@@ -189,6 +196,7 @@ mod tests {
     }
     #[rstest]
     #[case("data/tests/ConfigurationElement/Empty.lua", "foo", false, "", VariantType::Nil)]
+    #[case("data/tests/ConfigurationElement/OneElement.lua", "$", true, "root", VariantType::Nil)]
     #[case("data/tests/ConfigurationElement/OneElement.lua", "foo", true, "foo", VariantType::Boolean(true))]
     #[case("data/tests/ConfigurationElement/OneElement.lua", "bar", false, "bar", VariantType::Nil)]
     #[case("data/tests/ConfigurationElement/OneElement.lua", "$.foo", true, "foo", VariantType::Boolean(true))]
