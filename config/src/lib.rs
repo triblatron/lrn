@@ -195,6 +195,7 @@ mod tests {
     #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[1]", true, VariantType::Boolean(true))]
     #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[2]", true, VariantType::Float(2.0))]
     #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[3]", true, VariantType::String(String::from("wibble")))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[4].bar", true, VariantType::Float(1.5))]
     fn test_create_from_file(#[case] filename:&str, #[case] path:&str, #[case] exists : bool,  #[case] value:VariantType) {
         let lua = Lua::new();
         let sut = ConfigurationElement::from_file(&lua, filename);

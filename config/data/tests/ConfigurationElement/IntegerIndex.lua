@@ -4,6 +4,9 @@ root=
 	{
 		true,
 		2.0,
-		"wibble"
+		"wibble",
+		{
+			bar=1.5
+		}
 	},
 }
