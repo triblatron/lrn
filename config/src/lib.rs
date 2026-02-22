@@ -173,9 +173,18 @@ mod tests {
                 assert!(actual.is_boolean());
                 assert_eq!(value, actual.as_boolean().unwrap())
             }
-            VariantType::Integer(value) => assert_eq!(value, actual.as_integer().unwrap()),
-            VariantType::Float(value) => assert_eq!(value, actual.as_number().unwrap()),
-            VariantType::String(value) => assert_eq!(value, *actual.as_string().unwrap().to_str().unwrap()),
+            VariantType::Integer(value) => {
+                assert!(actual.is_integer());
+                assert_eq!(value, actual.as_integer().unwrap())
+            },
+            VariantType::Float(value) => {
+                assert!(actual.is_number());
+                assert_eq!(value, actual.as_number().unwrap())
+            },
+            VariantType::String(value) => {
+                assert!(actual.is_string());
+                assert_eq!(value, *actual.as_string().unwrap().to_str().unwrap())
+            },
         }
     }
     #[rstest]
