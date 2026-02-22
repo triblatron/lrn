@@ -7,6 +7,10 @@ root=
 		"wibble",
 		{
 			bar=1.5
+		},
+		flibble=
+		{
+			"tribble"
 		}
 	},
 	2
