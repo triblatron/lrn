@@ -324,6 +324,7 @@ mod tests {
     #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo[3].bar", true, "bar", VariantType::Float(1.5))]
     #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "$[0]", true, "[1]", VariantType::Integer(2))]
     #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.flibble[0]", true, "[1]", VariantType::String(String::from("tribble")))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "$.foo.flibble[0]", true, "[1]", VariantType::String(String::from("tribble")))]
     fn test_create_from_file(#[case] filename:&str, #[case] path:&str, #[case] exists : bool,  #[case] name: &str, #[case] value:VariantType) {
         let lua = Lua::new();
         let sut = ConfigurationElement::from_file(&lua, filename);
@@ -341,7 +342,8 @@ mod tests {
     #[rstest]
     #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "$", "$.baz", VariantType::String(String::from("wibble")))]
     #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "foo.bar", "$.baz", VariantType::String(String::from("wibble")))]
-    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[3]", "bar", VariantType::Float(1.5))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo[3]", "bar", VariantType::Float(1.5))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.flibble", "[0]", VariantType::String(String::from("tribble")))]
     fn test_find_element(#[case] filename:&str, #[case] path_to_location:&str, #[case] absolute_path:&str, #[case] value:VariantType) {
         let lua = Lua::new();
         let sut = ConfigurationElement::from_file(&lua, filename);
