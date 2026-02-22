@@ -132,10 +132,13 @@ impl ConfigurationElement {
         }
         let dot_pos = path.find('.');
         if let Some(dot_pos) = dot_pos {
+            let name = &path[0..dot_pos];
             for child in &self.children {
-                let candidate = child.borrow().find_in_children(&path[dot_pos+1..]);
-                if let Some(candidate) = candidate {
-                    return Some(candidate.clone());
+                if name == child.borrow().name {
+                    let candidate = child.borrow().find_in_children(&path[dot_pos+1..]);
+                    if let Some(candidate) = candidate {
+                        return Some(candidate.clone());
+                    }
                 }
             }
         }
@@ -166,7 +169,10 @@ mod tests {
     fn assert_comparison(value: VariantType, actual:&mlua::Value) {
         match value {
             VariantType::Nil => { assert!(actual.is_nil()); }
-            VariantType::Boolean(value) => assert_eq!(value, actual.as_boolean().unwrap()),
+            VariantType::Boolean(value) => {
+                assert!(actual.is_boolean());
+                assert_eq!(value, actual.as_boolean().unwrap())
+            }
             VariantType::Integer(value) => assert_eq!(value, actual.as_integer().unwrap()),
             VariantType::Float(value) => assert_eq!(value, actual.as_number().unwrap()),
             VariantType::String(value) => assert_eq!(value, *actual.as_string().unwrap().to_str().unwrap()),
@@ -201,6 +207,7 @@ mod tests {
     #[rstest]
     #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "$", "$.baz", VariantType::String(String::from("wibble")))]
     #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "foo.bar", "$.baz", VariantType::String(String::from("wibble")))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[4]", "bar", VariantType::Float(1.5))]
     fn test_find_element(#[case] filename:&str, #[case] path_to_location:&str, #[case] absolute_path:&str, #[case] value:VariantType) {
         let lua = Lua::new();
         let sut = ConfigurationElement::from_file(&lua, filename);
@@ -213,4 +220,5 @@ mod tests {
         assert!(actual.is_some());
         assert_comparison(value, actual.unwrap().deref().borrow().get_value());
     }
+
 }
