@@ -186,6 +186,7 @@ mod tests {
     #[rstest]
     #[case("data/tests/ConfigurationElement/Empty.lua", "foo", false, VariantType::Nil)]
     #[case("data/tests/ConfigurationElement/OneElement.lua", "foo", true, VariantType::Boolean(true))]
+    #[case("data/tests/ConfigurationElement/OneElement.lua", "bar", false, VariantType::Nil)]
     #[case("data/tests/ConfigurationElement/OneElement.lua", "$.foo", true, VariantType::Boolean(true))]
     #[case("data/tests/ConfigurationElement/NestedElement.lua", "foo.bar", true, VariantType::Float(1.0))]
     #[case("data/tests/ConfigurationElement/NestedElement.lua", "$.foo.bar", true, VariantType::Float(1.0))]
