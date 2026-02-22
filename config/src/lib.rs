@@ -106,17 +106,74 @@ impl ConfigurationElement {
             }
         }
     }
+    // ConfigurationElement* ConfigurationElement::findInArray(size_t startIndex, std::string_view path)
+    // {
+    //     path = path.substr(startIndex);
+    //     size_t index=0;
+    //     for (index = 0; index<path.length() && isdigit(path[index]); ++index);
+    //     char* end = nullptr;
+    //     size_t childIndex = std::strtoul(path.data(), &end, 10);
+    //     if (childIndex<_children.size() && index<path.size() && path[index] == ']')
+    //     {
+    //         auto child = _children[childIndex];
+    //         ++index;
+    //         if (index < path.length()-1)
+    //         {
+    //             path = path.substr(index+1);
+    //             return child->findInChildren(path);
+    //         }
+    //         else
+    //         {
+    //             return _children[childIndex];
+    //         }
+    //     }
+    //     return nullptr;
+    // }
 
+    fn find_in_array(&self, start_index:usize, path:&str) -> Option<Rc<RefCell<ConfigurationElement>>> {
+        let sliced_path = &path[start_index..];
+        let mut index:usize = 0;
+        for c in sliced_path.chars() {
+            if c.is_digit(10) {
+                index += 1;
+            }
+            else {
+                break;
+            }
+        }
+        let child_index = sliced_path[0..index].parse::<usize>();
+        if let Ok(child_index) = child_index {
+            if child_index < self.children.len() && index<sliced_path.len() && sliced_path[index..].starts_with(']') {
+                let child = self.children[child_index].clone();
+                index+=1;
+                if index < sliced_path.len() - 1 {
+                    return child.borrow().find_in_children(&sliced_path[index+1..]);
+                }
+                else {
+                    return Some(child);
+                }
+            }
+        }
+        None
+    }
     pub fn find_element(&self, path: &str) -> Option<Rc<RefCell<ConfigurationElement>>> {
         if path.starts_with("$") {
-            let relative_path = path.strip_prefix("$").unwrap();
-
             let self_rc = Rc::new(RefCell::new(self.clone()));
             let mut root = Rc::downgrade(&self_rc);
             let mut parent = root.clone();
             while let Some(some_parent) = parent.upgrade() {
                 root = Rc::downgrade(&some_parent);
                 parent = some_parent.borrow().parent.clone();
+            }
+            if path.eq("$") {
+                return Some(self_rc);
+            }
+            let relative_path = path.strip_prefix("$").unwrap();
+
+            let root_rc = root.upgrade();
+            if let Some(root_rc) = root_rc && path.len()>=4 && path[1..2].eq("[") {
+                let array_path = &path[2..];
+                return self.find_in_array(0, array_path);
             }
 
             let dot_pos = relative_path.find('.');
@@ -137,12 +194,70 @@ impl ConfigurationElement {
         if self.name == path {
             return Some(Rc::new(RefCell::new(self.clone())));
         }
+        // auto dotPos = path.find('.');
+        // // Find position of subscript.
+        // auto subPos = path.find('[');
+        // if (subPos!=std::string::npos && subPos < dotPos)
+        // {
+        //     if (subPos == 0)
+        //     {
+        //         return findInArray(1, path);
+        //     }
+        //     else
+        //     {
+        //         size_t index=0;
+        //         for (index=0; index<path.length() && path[index] != ']';++index);
+        //         if (index<path.length() && path[index]==']')
+        //         {
+        //             auto first = path.substr(0,subPos);
+        //             auto  rest = path.substr(subPos);
+        //
+        //             for (auto child : _children)
+        //             {
+        //                 if (child->name() == first)
+        //                 {
+        //                     return child->findInChildren(rest);
+        //                 }
+        //
+        //             }
+        //         }
+        //     }
+        // }
+        let sub_pos = path.find('[');
+        let sub_pos = sub_pos.as_slice();
         let dot_pos = path.find('.');
-        if let Some(dot_pos) = dot_pos {
-            let name = &path[0..dot_pos];
+        let dot_pos = dot_pos.as_slice();
+        if !sub_pos.is_empty() && (dot_pos.is_empty() ||  sub_pos[0] < dot_pos[0]) {
+            if sub_pos[0] == 0 {
+                return self.find_in_array(1, path);
+            }
+            else {
+                let mut index : usize = 0;
+                for c in path.chars() {
+                if c != ']' {
+                        index += 1;
+                    }
+                    else {
+                        break;
+                    }
+                }
+                if index < path.len() && path[index..].starts_with(']') {
+                    let first = &path[0..sub_pos[0]];
+                    let rest = &path[sub_pos[0]..];
+
+                    for child in &self.children {
+                        if child.borrow().name == first {
+                            return child.borrow().find_in_children(rest);
+                        }
+                    }
+                }
+            }
+        }
+        if !dot_pos.is_empty() {
+            let name = &path[0..dot_pos[0]];
             for child in &self.children {
                 if name == child.borrow().name {
-                    let candidate = child.borrow().find_in_children(&path[dot_pos+1..]);
+                    let candidate = child.borrow().find_in_children(&path[dot_pos[0]+1..]);
                     if let Some(candidate) = candidate {
                         return Some(candidate.clone());
                     }
@@ -204,11 +319,11 @@ mod tests {
     #[case("data/tests/ConfigurationElement/NestedElement.lua", "$.foo.bar", true, "bar", VariantType::Float(1.0))]
     #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "baz", true, "baz", VariantType::String(String::from("wibble")))]
     #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "qux", true, "qux", VariantType::Integer(1))]
-    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[1]", true, "[1]", VariantType::Boolean(true))]
-    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[2]", true, "[2]", VariantType::Float(2.0))]
-    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[3]", true, "[3]", VariantType::String(String::from("wibble")))]
-    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[4].bar", true, "bar", VariantType::Float(1.5))]
-    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "$.[1]", true, "[1]", VariantType::Integer(2))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo[0]", true, "[1]", VariantType::Boolean(true))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo[1]", true, "[2]", VariantType::Float(2.0))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo[2]", true, "[3]", VariantType::String(String::from("wibble")))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo[3].bar", true, "bar", VariantType::Float(1.5))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "$[0]", true, "[1]", VariantType::Integer(2))]
     fn test_create_from_file(#[case] filename:&str, #[case] path:&str, #[case] exists : bool,  #[case] name: &str, #[case] value:VariantType) {
         let lua = Lua::new();
         let sut = ConfigurationElement::from_file(&lua, filename);
@@ -226,7 +341,7 @@ mod tests {
     #[rstest]
     #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "$", "$.baz", VariantType::String(String::from("wibble")))]
     #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "foo.bar", "$.baz", VariantType::String(String::from("wibble")))]
-    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[4]", "bar", VariantType::Float(1.5))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[3]", "bar", VariantType::Float(1.5))]
     fn test_find_element(#[case] filename:&str, #[case] path_to_location:&str, #[case] absolute_path:&str, #[case] value:VariantType) {
         let lua = Lua::new();
         let sut = ConfigurationElement::from_file(&lua, filename);
