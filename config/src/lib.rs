@@ -188,27 +188,29 @@ mod tests {
         }
     }
     #[rstest]
-    #[case("data/tests/ConfigurationElement/Empty.lua", "foo", false, VariantType::Nil)]
-    #[case("data/tests/ConfigurationElement/OneElement.lua", "foo", true, VariantType::Boolean(true))]
-    #[case("data/tests/ConfigurationElement/OneElement.lua", "bar", false, VariantType::Nil)]
-    #[case("data/tests/ConfigurationElement/OneElement.lua", "$.foo", true, VariantType::Boolean(true))]
-    #[case("data/tests/ConfigurationElement/NestedElement.lua", "foo.bar", true, VariantType::Float(1.0))]
-    #[case("data/tests/ConfigurationElement/NestedElement.lua", "$.foo.bar", true, VariantType::Float(1.0))]
-    #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "baz", true, VariantType::String(String::from("wibble")))]
-    #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "qux", true, VariantType::Integer(1))]
-    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[1]", true, VariantType::Boolean(true))]
-    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[2]", true, VariantType::Float(2.0))]
-    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[3]", true, VariantType::String(String::from("wibble")))]
-    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[4].bar", true, VariantType::Float(1.5))]
-    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "$.[1]", true, VariantType::Integer(2))]
-    fn test_create_from_file(#[case] filename:&str, #[case] path:&str, #[case] exists : bool,  #[case] value:VariantType) {
+    #[case("data/tests/ConfigurationElement/Empty.lua", "foo", false, "", VariantType::Nil)]
+    #[case("data/tests/ConfigurationElement/OneElement.lua", "foo", true, "foo", VariantType::Boolean(true))]
+    #[case("data/tests/ConfigurationElement/OneElement.lua", "bar", false, "bar", VariantType::Nil)]
+    #[case("data/tests/ConfigurationElement/OneElement.lua", "$.foo", true, "foo", VariantType::Boolean(true))]
+    #[case("data/tests/ConfigurationElement/NestedElement.lua", "foo.bar", true, "bar", VariantType::Float(1.0))]
+    #[case("data/tests/ConfigurationElement/NestedElement.lua", "$.foo.bar", true, "bar", VariantType::Float(1.0))]
+    #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "baz", true, "baz", VariantType::String(String::from("wibble")))]
+    #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "qux", true, "qux", VariantType::Integer(1))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[1]", true, "[1]", VariantType::Boolean(true))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[2]", true, "[2]", VariantType::Float(2.0))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[3]", true, "[3]", VariantType::String(String::from("wibble")))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.[4].bar", true, "bar", VariantType::Float(1.5))]
+    #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "$.[1]", true, "[1]", VariantType::Integer(2))]
+    fn test_create_from_file(#[case] filename:&str, #[case] path:&str, #[case] exists : bool,  #[case] name: &str, #[case] value:VariantType) {
         let lua = Lua::new();
         let sut = ConfigurationElement::from_file(&lua, filename);
         assert!(sut.is_some());
         let actual = sut.unwrap().as_ref().borrow().find_element(path);
         assert_eq!(exists, actual.is_some());
         if let Some(actual) = actual {
-            assert_comparison(value, actual.deref().borrow().get_value());
+            let actual = actual.deref().borrow();
+            assert_eq!(name, actual.name);
+            assert_comparison(value, actual.get_value());
             //assert_eq!(value, *actual.unwrap().borrow().get_value());
         }
     }
