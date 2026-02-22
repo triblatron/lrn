@@ -49,6 +49,19 @@ impl ConfigurationElement {
         None
     }
 
+    pub fn from_string(lua : &Lua, string: &str) -> Option<Rc<RefCell<ConfigurationElement>>> {
+        let chunk = lua.load(string);
+        let result = chunk.exec();
+        match result {
+            Ok(()) => {
+                return ConfigurationElement::build_tree(lua);
+            }
+            Err(e) => {
+                eprintln!("Error loading configuration element: {}", e);
+            }
+        }
+        None
+    }
     pub fn new(name:String, index:i64, value:mlua::Value) -> Rc<RefCell<ConfigurationElement>> {
         let this = ConfigurationElement{
             name,
@@ -340,11 +353,40 @@ mod tests {
     }
 
     #[rstest]
+    #[case("root = {}", "$", "root")]
+    #[case("root = { foo = true }", "$.foo", "foo")]
+    #[case("root = { foo = { wibble=1.0 } }", "$.foo.wibble", "wibble")]
+    #[case("root = { foo = { flibble={ spoo=3 } } }", "$.foo.flibble.spoo", "spoo")]
+    #[case("root = { foo = true }", "foo", "foo")]
+    #[case("root = { foo = { bar=\"wibble\" } }", "foo.bar", "bar")]
+    #[case("root = { foo = { bar={ baz=2 } } }", "foo.bar.baz", "baz")]
+    #[case("root = { \"wibble\" }", "$[0]", "[1]")]
+    #[case("root = { wibble={ true } }", "$.wibble[0]", "[1]")]
+    #[case("root = { wibble={ { foo=true } } }", "$.wibble[0].foo", "foo")]
+    #[case("root = { wibble={ { foo={true} } } }", "$.wibble[0].foo[0]", "[1]")]
+    #[case("root = { wibble={ foo={ true } } }", "$.wibble.foo[0]", "[1]")]
+    #[case("root = { wibble={ foo={ { bar=1.0 } } } }", "$.wibble.foo[0].bar", "bar")]
+    #[case("root = { wibble={ foo={ { bar=1.0 }, { baz=\"baz\" }, } } }", "$.wibble.foo[1].baz", "baz")]
+    #[case("root = { wibble={ foo={ true } }, flibble={ tribble=1.0 } }", "$.flibble.tribble", "tribble")]
+    #[case("root = { wibble={ foo={ true } }, flibble={ tribble=1.0 } }", "wibble.foo", "foo")]
+    #[case("root = { wibble={ { foo=true } }, { tribble=1.0 } }", "wibble[0].foo", "foo")]
+    #[case("root = { { foo=true }, { tribble=1.0 } }", "$[1].tribble", "tribble")]
+    #[case("root = { { foo=true }, { tribble=1.0 } }", "[1].tribble", "tribble")]
+    #[case("root = { wibble={ { foo=true }, { tribble=1.0 }, } }", "wibble[1].tribble", "tribble")]
+    fn test_create_from_string(#[case] input: &str, #[case] path:&str, #[case] name:&str) {
+        let lua = Lua::new();
+        let sut = ConfigurationElement::from_string(&lua, input);
+        assert!(sut.is_some());
+        let actual = sut.as_ref().unwrap().borrow().find_element(path);
+        assert!(actual.is_some());
+        assert_eq!(name, actual.unwrap().deref().borrow().name);
+    }
+    #[rstest]
     #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "$", "$.baz", VariantType::String(String::from("wibble")))]
     #[case("data/tests/ConfigurationElement/NestedMultipleChildren.lua", "foo.bar", "$.baz", VariantType::String(String::from("wibble")))]
     #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo[3]", "bar", VariantType::Float(1.5))]
     #[case("data/tests/ConfigurationElement/IntegerIndex.lua", "foo.flibble", "[0]", VariantType::String(String::from("tribble")))]
-    fn test_find_element(#[case] filename:&str, #[case] path_to_location:&str, #[case] absolute_path:&str, #[case] value:VariantType) {
+    fn test_find_element_from_existing(#[case] filename:&str, #[case] path_to_location:&str, #[case] absolute_path:&str, #[case] value:VariantType) {
         let lua = Lua::new();
         let sut = ConfigurationElement::from_file(&lua, filename);
         assert!(sut.is_some());
