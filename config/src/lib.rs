@@ -66,47 +66,37 @@ impl ConfigurationElement {
         return Some(parent);
     }
 
+    fn build_tree_element(lua: &Lua, name:String, value:mlua::Value, parent_stack:&mut Vec<Rc<RefCell<ConfigurationElement>>>, level:u32) -> () {
+        if value.is_string() || value.is_integer() || value.is_number() || value.is_boolean() {
+            let element =  ConfigurationElement::new(name, value.clone());
+
+            let top = parent_stack.last().unwrap();
+            top.borrow_mut().add_child(top, element);
+        }
+        else if value.is_table() {
+            let child = ConfigurationElement::new(name, mlua::Value::Nil);
+
+            let top  = parent_stack.last().unwrap();
+            top.borrow_mut().add_child(top, child.clone());
+            parent_stack.push(child.clone());
+            Self::build_tree_helper(&lua, value.as_table().unwrap().clone(), parent_stack, level+1);
+        }
+    }
     pub fn build_tree_helper(lua: &Lua, table: mlua::Table, parent_stack: &mut Vec<Rc<RefCell<ConfigurationElement>>>, level:u32) {
         let table:mlua::Table = table;
         for pair in table.pairs::<mlua::Value, mlua::Value>() {
             let (key, value) = pair.unwrap();
-            println!("{:?} = {:?}", key, value);
             while parent_stack.len() - 1 > level as usize {
                 parent_stack.pop();
             }
             if key.is_string() {
-                if value.is_string() || value.is_integer() || value.is_number() || value.is_boolean() {
-                    let element =  ConfigurationElement::new(key.to_string().unwrap(), value.clone());
-
-                    let top = parent_stack.last().unwrap();
-                    top.borrow_mut().add_child(top, element);
-                }
-                else if value.is_table() {
-                    let child = ConfigurationElement::new(key.to_string().unwrap(), mlua::Value::Nil);
-
-                    let top  = parent_stack.last().unwrap();
-                    top.borrow_mut().add_child(top, child.clone());
-                    parent_stack.push(child.clone());
-                    Self::build_tree_helper(&lua, value.as_table().unwrap().clone(), parent_stack, level+1);
-                }
+                Self::build_tree_element(lua, key.to_string().unwrap(), value, parent_stack, level);
             }
             else if key.is_integer() {
-                if value.is_string() || value.is_integer() || value.is_number() || value.is_boolean() {
-                    let mut name:String = String::from("[");
-                    name.push_str(key.to_string().unwrap().as_str());
-                    name.push_str("]");
-                    let child = ConfigurationElement::new(name, value.clone());
-                    let top  = parent_stack.last().unwrap();
-                    top.borrow_mut().add_child(top, child.clone());
-                }
-                else if value.is_table() {
-                    let child = ConfigurationElement::new(key.to_string().unwrap(),mlua::Value::Nil);
-
-                    let top  = parent_stack.last().unwrap();
-                    top.borrow_mut().add_child(top, child.clone());
-                    parent_stack.push(child.clone());
-                    Self::build_tree_helper(&lua, value.as_table().unwrap().clone(), parent_stack, level+1);
-                }
+                let mut name:String = String::from("[");
+                name.push_str(key.to_string().unwrap().as_str());
+                name.push_str("]");
+                Self::build_tree_element(lua, name, value, parent_stack, level);
             }
         }
     }
