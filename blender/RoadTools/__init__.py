@@ -9,6 +9,12 @@
 # ~ }
 
 import bpy
+import sys
+import os
+import site
+
+sys.path.append(os.path.dirname(__file__))
+import Clothoids
 
 class OBJECT_OT_create_straight(bpy.types.Operator):
     bl_idname = "object.create_straight"
