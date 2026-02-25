@@ -1,0 +1,11 @@
+schema_version = "1.0.0"
+id = "road_tools"
+version = "1.0.0"
+name = "RoadTools"
+tagline = "Designs roads"
+maintainer = "Tony Horrobin"
+type = "add-on"
+blender_version_min = "4.4.0"
+license = [
+  "SPDX:BSD",
+]   
